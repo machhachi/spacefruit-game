@@ -1,0 +1,3 @@
+# Spacefruit the Game
+# Main file
+from cmu_graphics import *
