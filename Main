@@ -1,3 +1,15 @@
 # Spacefruit the Game
 # Main file
 from cmu_graphics import *
+
+def onAppStart(app):
+    pass
+
+def redrawAll(app):
+    pass
+
+def main():
+    size = 600
+    runApp(width = 600, height = 600)
+
+main()
