@@ -1,15 +1,229 @@
 # Spacefruit the Game
 # Main file
+# By Alexander Werth
+# Andrew ID: awerth2
+# Recitation: U
+
+
 from cmu_graphics import *
+import math
+
+
+# === TO DO ===
+# Implement gravitation
+#   Don't do between all bodies, figure out classes so that some give and some recieve
+# 
+# Implement sphere collision
+#   Test all CollisionObjects
+#       for now, give all a Type, and only handle sphere-sphere collisions
+#       All of them should have a Radius
+#   Momentum-based collision we like
+
+# === Distant Wants
+# Outer Wilds style minimap of the world that can be panned through
+# Fruit fall off of trees
+# Miniature allies / enemies that can fly around in your vicinity and are reasonable at navigating
+# 
+
+# === OBJECT DEFINITION ===
+
+# Collision objects and non-collision objects
+
+class CollisionObject(): # Let's assume size
+    def __init__(self, pos, size):
+        self.pos = pos
+        self.size = size
+
+class PhyiscsCollisionObject(CollisionObject):
+    def __init__(self, pos, vel, size, mass):
+        self.pos = pos
+        self.vel = vel
+        self.size = size
+        self.mass = mass
+
+class Planet(CollisionObject):
+    def __init__(self, pos, vel, size, mass, color):
+        self.pos = pos
+        self.vel = vel
+        self.size = size
+        self.mass = mass
+        self.color = color
+
+class Player(PhyiscsCollisionObject):
+    def __init__(self, pos, vel, size, mass):
+        self.pos = {
+            'x': pos(0),
+            'y' : pos(1),
+            'r' : pos(2)
+        }
+        self.vel = {
+            'x': vel(0),
+            'y' : vel(1),
+            'r' : vel(2)
+        }
+        self.size = size
+        self.mass = mass
+
+    def draw(self, app):
+        drawCircle(self.pos['x'], self.pos['y'], self.size, fill = 'blue')
+
+# === PHYSICS HELPER FUNCTIONS ===
+
+def distance(x1, y1, x2, y2):
+        return( (y2 - y1) ** 2 + (x2 - x1) ** 2 ) ** 0.5
+
+# === PHYSICS SPECIFIC MATHEMATICS
+
+# Player Physics
+linearThreshold = 0.1
+rotationalThreshold = 0.1
+constantThrustDrag = 0
+constantRollDrag = 0.01
+
+
+def takePlayerPhysicsStep(app):
+    fNetx, fNety = calcPlayerNetForce(app)
+    # Acceleration, velocity, position
+    ddx = fNetx / app.playerMass
+    ddy = fNety / app.playerMass
+    ddTheta = calcPlayerNetTorque(app) / app.playerMass
+
+    app.playerVel[0] += ddx
+    app.playerVel[1] += ddy
+    app.playerVel[2] += ddTheta
+
+    if not app.Thrusting:
+        snapVelocitiesToZero(app)
+    
+    app.playerPos[0] += app.playerVel[0]
+    app.playerPos[1] += app.playerVel[1]
+    app.playerPos[2] += app.playerVel[2]
+    
+def calcPlayerNetForce(app): # HELP CONVERT TO ANGLED THRUST
+    fNetx, fNety = 0, 0
+    fNetx += app.playerThrust[0] * math.sin(math.radians(app.playerPos[2]))
+    fNety += app.playerThrust[0] * math.cos(math.radians(app.playerPos[2]))
+
+    fNetx -= app.playerVel[0] * 0.01
+    fNety -= app.playerVel[1] * 0.01
+    # add gravity
+    return fNetx, fNety
+
+def calcPlayerNetTorque(app):
+    fNetTheta = 0
+    fNetTheta += app.playerThrust[1]
+    fNetTheta -= app.playerVel[2] * constantRollDrag
+    return fNetTheta
+
+def snapVelocitiesToZero(app):
+    if abs(app.playerVel[0]) < linearThreshold:
+        app.playerVel[0] = 0
+    if abs(app.playerVel[1]) < linearThreshold:
+        app.playerVel[1] = 0
+    if abs(app.playerVel[2]) < rotationalThreshold:
+        app.playerVel[2] = 0
+
+
+# === APP INITIALIZATION + EVENT HANDLING ===
 
 def onAppStart(app):
-    pass
+    setRenderOrigin(app)
+    app.objectOnePos = [100, 0, 0]
 
-def redrawAll(app):
-    pass
+    app.playerPos = [0, 0, 0]
+    app.playerVel = [0, 0, 0]
+    app.playerThrust = [0, 0]
+    app.playerMass = 1
+
+    app.playerThrustConstant = 0.1
+    app.playerTwistConstant = 0.1
+
+    app.Thrusting = False
+# Stepping
+
+def onStep(app):
+    takePlayerPhysicsStep(app)
+    setRenderOrigin(app) # I want it to center on any screen size, for now
+
+# Player Interaction
+
+def onKeyPress(app, key):
+    app.Thrusting = True
+    app.playerThrust = [
+        ( int(key == 'w') - int(key == 's') ) * app.playerThrustConstant,
+        ( int(key == 'd') - int(key == 'a') ) * app.playerTwistConstant
+    ]
+
+def onKeyHold(app, key):
+    app.Thrusting = True
+    kT, kR = 0, 0
+    for thisKey in key:
+        kT += int(thisKey == 'w') * app.playerThrustConstant
+        kT -= int(thisKey == 's') * app.playerThrustConstant
+        kR += int(thisKey == 'd') * app.playerTwistConstant
+        kR -= int(thisKey == 'a') * app.playerTwistConstant
+    app.playerThrust = [kT, kR]
+
+def onKeyRelease(app, key):
+    app.Thrusting = False
+    app.playerThrust = [0, 0]
+
+# === RENDERING ===
+
+def redrawAll(app): 
+    drawCircle(*renderCoords(app, app.objectOnePos), 80, fill = 'green')
+    drawLineTopX, drawLineTopY = app.objectOnePos[0], app.objectOnePos[0] + 30
+    drawLine(*renderCoords(app, app.objectOnePos), *renderCoords(app, (drawLineTopX, drawLineTopY)), fill = 'black')
+
+    drawPlayer(app)
+    drawRenderOrigin(app)
+
+    drawLabel(f"Thrust: {app.playerThrust}", 100, 30, align = 'left')
+    xThrust = math.sin(math.radians(app.playerPos[2]))
+    yThrust = math.cos(math.radians(app.playerPos[2]))
+    drawLabel(f"Thrust Components: {xThrust}, {yThrust}", 100, 90, align = 'left')
+    drawLabel(f"Speed: {app.playerVel}", 100, 50, align = 'left')
+    drawLabel(f"Pos: {app.playerPos}", 100, 70, align = 'left')
+
+def setRenderOrigin(app, posX = 0.5, posY = 0.5):
+    app.renderOrigin = (app.width * posX, app.height * posY)
+
+def renderTranslate(x, y, cx, cy):
+    return x - cx, y - cy
+
+def renderRotate(x, y, theta):
+    theta = math.radians(theta)
+    rotatedX = math.cos(theta) * x - math.sin(theta) * y
+    rotatedY = math.sin(theta) * x + math.cos(theta) * y
+    return rotatedX, rotatedY
+
+def renderCoords(app, posTuple): # The master renderer
+    xReal, yReal = posTuple[0], posTuple[1]
+    
+    xCam, yCam = app.playerPos[0], app.playerPos[1]
+    thetaCam = app.playerPos[2]
+    
+    # Shift the coordinates in realspace to put the camera at origin
+    tx, ty = renderTranslate(xReal, yReal, xCam, yCam)
+    rx, ry = renderRotate(tx, ty, thetaCam)
+    finalx, finaly = rx, ry
+    
+    # Shift to render scheme
+    xRender, yRender = app.renderOrigin[0] + finalx, app.renderOrigin[1] - finaly
+    return xRender, yRender
+
+# === Early Stage CMU-Graphics Renderers
+
+def drawRenderOrigin(app):
+    drawCircle(*app.renderOrigin, 3, fill = 'black')
+
+def drawPlayer(app):
+        drawCircle(*renderCoords(app, app.playerPos), 30, fill = 'blue')
+
+# === MAIN ===
 
 def main():
-    size = 600
+    scale = 600
     runApp(width = 600, height = 600)
 
 main()
