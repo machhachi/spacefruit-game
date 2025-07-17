@@ -13,14 +13,78 @@ import math
 # Implement gravitation
 #   Don't do between all bodies, figure out classes so that some give and some recieve
 # 
-# Implement sphere collision
-#   Test all CollisionObjects
-#       for now, give all a Type, and only handle sphere-sphere collisions
-#       All of them should have a Radius
-#   Momentum-based collision we like
+# Implement Collision
+# The hardest work the ship / fruit end wants to do (for now the only planet-colliders) is know If It's Colliding.
+# Then, it wants to be given a collision return direction. That is literally all.
+
+# So, working top down, we will design a function that checks if it's colliding, and if so, returns the direct vector to the edge. (It's normal).
+#   (This lets us do two things. For slow / inelastic collisions, we simply teleport along that vector, so we're just at the surface)
+#   (For fast / elastic collisions, we turn that into a unit vector, and reverse the component of velocity going in the negative of that direction)
+#       (I thought of this a bit ago: we only want to have our direction flipped if we're going towards the inside of the shape)
+#       (This prevents rubber banding of adding more and more speed once we're already on our way outwards)
+#       (Then again we could simply teleport to the edge for any collision, but we should do that as well as what I'm now describing)
+#       (Yadda yadda, take the dot product of the collision normal vector and velocity, if negative (thing going further into planet) THEN flip it)
+#                               (do nothing otherwise)
+
+# This collision function will compare the player's centerpoint (I like center, as opposed to foot point as mike mentioned) to a Collision Mesh
+# The collision mesh is the floor mesh, raised by the player's radius, such that intersecting / being in it counts as touching the planet
+# This code now depends on the type of mesh we have. But both can easily identify a point on their interior and both can return the best outward normal
+
+# Spherical meshes are the first type. (And easier)
+# Their planet is a ball, and the collision mesh is simply the ball raised by the player's radius.
+# Checking internality is as simple as asking if the centerpoint distance is less than the collision ball's radius.
+# And then, the return vector is the collision radius minus the centerpoint radius. 
+#   (Convert comp-wise to hypotenuse and angle) (Straight radius minus hypotenuse gives leftover) (Convert leftover back to components)
+
+# Linear meshes are the second type. (I think I got this down)
+# I like to call them linear, but these are more specifically arbitrary n-polygons. I imagine them best as a collection of lines.
+# Most specifically, they are just a collection of points (wound ccw let's say). Lines are drawn between those as the planet.
+
+# First, we must check if we are inside the line-gon
+# I'll go through two proposed solutions: the Taylor raycaster and the Lague dotprod
+#   The Taylor raycaster is a standard seeming solution, you draw lines radiating from the player
+#   And count the number of times they intersect the lines of the planet-gon
+#       One should always get an odd number of intersections to be inside the thing
+#       This accounts for concavities, so the line can enter and exit so long as there is always a net single exit
+#       This is agnostic to the alignment of points, which is nice
+#       An agreeing majority vote of odd-ness (add 1 for each odd intersection total, subtract 1 for even, check if positive) should iron out edge cases
+#       And there you have it: you're intersecting
+
+#       Maybe relevant: https://www.geeksforgeeks.org/dsa/check-if-two-given-line-segments-intersect/
+
+#   The Lague dot product is a neat trick that is practical for rendering triangles (I suspect complexity ups wildly with line count)
+#       The dotprod method seeks to find whether a point is equally on the left or right of the three sides of a triangle
+#       Now the left or right of a line is not awfully clear, but that is only 90 degrees off from in alignment with the forward direction of a line
+#       So this takes the direction vector along a line, rotated 90, dotted with the vector from that line to the test point
+#       This dot product will be positive if internal and negative if external, depending on winding order
+#       And if all values agree in the triangle, then it is within
+
+#       Unfortunately this seems difficult to generalize to arbitrary polygons
+#       I think this is a case where concavities become very difficult
+#       The math is cool, but I think puting together an effective raycasting is better
+
+#       Plus, raycasting (with sufficient resolution) gives us an answer to the closest wall, which is useful
+
+# So we know we are inside the line-gon. Excellent. Now, we must get the side we entered from, and know its normal vector.
+#   Realistically, this is the current closest side. Our speeds won't be so unfathomably high that we will burrow into line-gons and pass through.
+#   As we iterate through the raycaster, we should store the closest point of intersection to the player, and its accompanying line.
+
+#   Once we're done determining our inside-ness of the line-gon, we refer back to the closest line.
+#   Ideally, we calculate the perpendicular distance vector between our closest line and the player point.
+#
+# This is the distance vector to the surface.
+# In fact, we now know the return vector that we wanted all along.
+
+
+# So now, in both cases, we have determined that we are colliding, and we know the path there.
+
+# We now chooes between two types of collision
+
+
 
 # === Distant Wants
 # Outer Wilds style minimap of the world that can be panned through
+# Fruit objects that can be collision physics bodies, spheres, and roll about
 # Fruit fall off of trees
 # Miniature allies / enemies that can fly around in your vicinity and are reasonable at navigating
 # 
@@ -69,16 +133,19 @@ class Player(PhyiscsCollisionObject):
 
 # === PHYSICS HELPER FUNCTIONS ===
 
+def hypotenuse(a, b):
+    return (a ** 2 + b ** 2) ** 0.5
+
 def distance(x1, y1, x2, y2):
-        return( (y2 - y1) ** 2 + (x2 - x1) ** 2 ) ** 0.5
+    return( (y2 - y1) ** 2 + (x2 - x1) ** 2 ) ** 0.5
 
 # === PHYSICS SPECIFIC MATHEMATICS
 
 # Player Physics
 linearThreshold = 0.1
 rotationalThreshold = 0.1
-constantThrustDrag = 0
-constantRollDrag = 0.01
+constantThrustDrag = 0.02
+constantRollDrag = 0.04
 
 
 def takePlayerPhysicsStep(app):
@@ -104,8 +171,8 @@ def calcPlayerNetForce(app): # HELP CONVERT TO ANGLED THRUST
     fNetx += app.playerThrust[0] * math.sin(math.radians(app.playerPos[2]))
     fNety += app.playerThrust[0] * math.cos(math.radians(app.playerPos[2]))
 
-    fNetx -= app.playerVel[0] * 0.01
-    fNety -= app.playerVel[1] * 0.01
+    fNetx -= app.playerVel[0] * constantThrustDrag
+    fNety -= app.playerVel[1] * constantThrustDrag
     # add gravity
     return fNetx, fNety
 
@@ -137,6 +204,8 @@ def onAppStart(app):
 
     app.playerThrustConstant = 0.1
     app.playerTwistConstant = 0.1
+
+    app.stepsPerSecond = 30
 
     app.Thrusting = False
 # Stepping
@@ -181,9 +250,11 @@ def redrawAll(app):
     drawLabel(f"Thrust: {app.playerThrust}", 100, 30, align = 'left')
     xThrust = math.sin(math.radians(app.playerPos[2]))
     yThrust = math.cos(math.radians(app.playerPos[2]))
-    drawLabel(f"Thrust Components: {xThrust}, {yThrust}", 100, 90, align = 'left')
+    drawLabel(f"Thrust Components: {xThrust}, {yThrust}", 100, 110, align = 'left')
     drawLabel(f"Speed: {app.playerVel}", 100, 50, align = 'left')
-    drawLabel(f"Pos: {app.playerPos}", 100, 70, align = 'left')
+    trueSpeed = hypotenuse(app.playerVel[0], app.playerVel[1])
+    drawLabel(f"Absolute Speed:{trueSpeed}", 100, 70, align = 'left')
+    drawLabel(f"Pos: {app.playerPos}", 100, 90, align = 'left')
 
 def setRenderOrigin(app, posX = 0.5, posY = 0.5):
     app.renderOrigin = (app.width * posX, app.height * posY)
