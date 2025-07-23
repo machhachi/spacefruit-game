@@ -91,8 +91,8 @@ class Player(SmallBody):
         self.constants = {
             'thrustForce': 0.1,
             'rollForce': 0.1,
-            'minimumLinearSpeed': 0.1,
-            'minimumRotationalSpeed': 0.05,
+            'minimumLinearSpeed': 0.001,
+            'minimumRotationalSpeed': 0.005,
             'constantThrustDrag': 0.02,
             'constantRollDrag': 0.04
         }
@@ -106,9 +106,9 @@ class Player(SmallBody):
     def thrustKeysPressed(self, key):
         if key in {'w', 'a', 's', 'd'}:
             player.thrust = [
-                ( int(key == 'w') - int(key == 's') ) * self.constants['thrustForce']
+                ( int(key == 'w') - int(key == 's') ) * self.constants['thrustForce'],
                 ( int(key == 'd') - int(key == 'a') ) * self.constants['rollForce']
-        ]
+            ]
 
     def thrustKeysHeld(self, keyList):
         setKeys = set(keyList)
