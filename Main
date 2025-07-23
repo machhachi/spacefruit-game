@@ -1,150 +1,84 @@
+# Main.py
+
 # Spacefruit the Game
 # Main file
 # By Alexander Werth
 # Andrew ID: awerth2
 # Recitation: U
 
-
 from cmu_graphics import *
 import math
 
-# Clear out app.playerPos and make it a list
-# maybe I can forgo the dictionary definition I think it's fine
 
+# === MATH HELPERS ===
 
-# === TO DO ===
-# Implement gravitation
-#   Don't do between all bodies, figure out classes so that some give and some recieve
-# 
-# Implement Collision
-# The hardest work the ship / fruit end wants to do (for now the only planet-colliders) is know If It's Colliding.
-# Then, it wants to be given a collision return direction. That is literally all.
+# Geometry
+def hypotenuse(a, b):
+    return (a ** 2 + b ** 2) ** 0.5
 
-# So, working top down, we will design a function that checks if it's colliding, and if so, returns the direct vector to the edge. (It's normal).
-#   (This lets us do two things. For slow / inelastic collisions, we simply teleport along that vector, so we're just at the surface)
-#   (For fast / elastic collisions, we turn that into a unit vector, and reverse the component of velocity going in the negative of that direction)
-#       (I thought of this a bit ago: we only want to have our direction flipped if we're going towards the inside of the shape)
-#       (This prevents rubber banding of adding more and more speed once we're already on our way outwards)
-#       (Then again we could simply teleport to the edge for any collision, but we should do that as well as what I'm now describing)
-#       (Yadda yadda, take the dot product of the collision normal vector and velocity, if negative (thing going further into planet) THEN flip it)
-#                               (do nothing otherwise)
+def distance(x1, y1, x2, y2):
+    return( (y2 - y1) ** 2 + (x2 - x1) ** 2 ) ** 0.5
 
-# This collision function will compare the player's centerpoint (I like center, as opposed to foot point as mike mentioned) to a Collision Mesh
-# The collision mesh is the floor mesh, raised by the player's radius, such that intersecting / being in it counts as touching the planet
-# This code now depends on the type of mesh we have. But both can easily identify a point on their interior and both can return the best outward normal
+# 2D Vectors
+def vecUnit(x, y): # Normalizes to vector of magnitude 1
+    return x / hypotenuse(x,y), y / hypotenuse(x, y)
 
-# Spherical meshes are the first type. (And easier)
-# Their planet is a ball, and the collision mesh is simply the ball raised by the player's radius.
-# Checking internality is as simple as asking if the centerpoint distance is less than the collision ball's radius.
-# And then, the return vector is the collision radius minus the centerpoint radius. 
-#   (Convert comp-wise to hypotenuse and angle) (Straight radius minus hypotenuse gives leftover) (Convert leftover back to components)
+def vecDot(x1, y1, x2, y2): # Componentwise dot product
+    return x1 * x2 + y1 * y2 # turns out it's not very special
 
-# Linear meshes are the second type. (I think I got this down)
-# I like to call them linear, but these are more specifically arbitrary n-polygons. I imagine them best as a collection of lines.
-# Most specifically, they are just a collection of points (wound ccw let's say). Lines are drawn between those as the planet.
+def vecTheta(x1, y1, x2, y2): # Angle between lines, a la dot product
+    # Crunches the two definitions of dot product,
+    #   (sum of component products) = |a||b|cos(theta)
+    # , evaluating for theta
+    return math.acos( vecDot(x1, y1, x2, y2) / 
+                    ( hypotenuse(x1, y1) * hypotenuse(x2, y2) ) )
 
-# First, we must check if we are inside the line-gon
-# I'll go through two proposed solutions: the Taylor raycaster and the Lague dotprod
-#   The Taylor raycaster is a standard seeming solution, you draw lines radiating from the player
-#   And count the number of times they intersect the lines of the planet-gon
-#       One should always get an odd number of intersections to be inside the thing
-#       This accounts for concavities, so the line can enter and exit so long as there is always a net single exit
-#       This is agnostic to the alignment of points, which is nice
-#       An agreeing majority vote of odd-ness (add 1 for each odd intersection total, subtract 1 for even, check if positive) should iron out edge cases
-#       And there you have it: you're intersecting
+# Planet tools
+def centerDistance(pos1, pos2):
+    return distance(pos1[0], pos1[1], pos2[0], pos2[1])
 
-#       Maybe relevant: https://www.geeksforgeeks.org/dsa/check-if-two-given-line-segments-intersect/
+# === DEBUG OBJECTS ===
 
-#   The Lague dot product is a neat trick that is practical for rendering triangles (I suspect complexity ups wildly with line count)
-#       The dotprod method seeks to find whether a point is equally on the left or right of the three sides of a triangle
-#       Now the left or right of a line is not awfully clear, but that is only 90 degrees off from in alignment with the forward direction of a line
-#       So this takes the direction vector along a line, rotated 90, dotted with the vector from that line to the test point
-#       This dot product will be positive if internal and negative if external, depending on winding order
-#       And if all values agree in the triangle, then it is within
-
-#       Unfortunately this seems difficult to generalize to arbitrary polygons
-#       I think this is a case where concavities become very difficult
-#       The math is cool, but I think puting together an effective raycasting is better
-
-#       Plus, raycasting (with sufficient resolution) gives us an answer to the closest wall, which is useful
-
-# So we know we are inside the line-gon. Excellent. Now, we must get the side we entered from, and know its normal vector.
-#   Realistically, this is the current closest side. Our speeds won't be so unfathomably high that we will burrow into line-gons and pass through.
-#   As we iterate through the raycaster, we should store the closest point of intersection to the player, and its accompanying line.
-
-#   Once we're done determining our inside-ness of the line-gon, we refer back to the closest line.
-#   Ideally, we calculate the perpendicular distance vector between our closest line and the player point.
-#
-# This is the distance vector to the surface.
-# In fact, we now know the return vector that we wanted all along.
-
-
-# So now, in both cases, we have determined that we are colliding, and we know the path there.
-
-# We now chooes between two types of collision
-
-
-
-# Practical wants
-# Don't render objects if they're too far ( radius of rendering )
-# How to globalize scale? (Just pass app variables to everything, as Mike put it, "import *" is like it pastes the WHOLE block)
-
-# === Distant Wants
-# Outer Wilds style minimap of the world that can be panned through
-# Fruit objects that can be collision physics bodies, spheres, and roll about
-# Fruit fall off of trees
-# Miniature allies / enemies that can fly around in your vicinity and are reasonable at navigating
-# 
-
-# === APP INITIALIZATION
-
-def onAppStart(app):
-    setRenderOrigin(app)
-
-    # Game state
-    app.stepsPerSecond = 30
-    app.scale = 1
-
-    # Player behavior
-    app.Thrusting = False
-    app.directionScaleChange = 1
-
-    app.playerThrustConstant = 0.1
-    app.playerTwistConstant = 0.1
-
-    # Objects
-    app.objectOnePos = [600, 200, 0]
-
-
-# === OBJECT DEFINITION ===
-
-class CollisionObject(): # Let's assume size
-    def __init__(self, pos, size):
-        self.pos = pos
+# A drawn object
+class Helperball():
+    def __init__(self, centerPos, size, color = 'black'):
+        self.centerPos = centerPos
         self.size = size
+        self.color = color
+    
+    def draw(self, app):
+        drawCircle(*renderCoords(app, self.centerPos), self.size * app.scale, fill = self.color)
 
-class SmallBody(CollisionObject):
+class Helperline():
+    def __init__(self, startPos, endPos, thickness, color = 'black'):
+        self.startPos = startPos
+        self.endPos = endPos
+        self.color = color
+        self.thickness = thickness
+    
+    def draw(self, app):
+        drawLine(*renderCoords(app, self.startPos), *renderCoords(app, self.endPos), lineWidth = self.thickness * app.scale, fill = self.color)
+
+# === OBJECTS ===
+
+
+
+# A small object that collides with planets
+class SmallBody():
     def __init__(self, pos, vel, size, mass):
         self.pos = pos
         self.vel = vel
         self.size = size
         self.mass = mass
 
-class SpherePlanet():
-    def __init__(self, pos, vel, mass, color, size):
-        self.pos = pos
-        self.vel = vel
-        self.mass = mass
-        self.color = color
+    def collide(self):
+        # Handle collisions with spherical planets
+        for thisPlanet in SpherePlanet.Planets:
+            planetCenter = thisPlanet.pos
+            planetMass = thisPlanet.mass
 
-        self.size = size
-
-class LinePlanet():
-    def __init__(self, centerPos, vel, mass, mesh):
-        self.pos = centerPos
-        self.vel = vel
-        self.mass = mass
-        self.mesh = mesh
+            
+        pass
 
 class Player(SmallBody):
     def __init__(self, pos, vel, thrust, size, mass):
@@ -154,29 +88,259 @@ class Player(SmallBody):
         self.size = size
         self.mass = mass
 
+        self.constants = {
+            'thrustForce': 0.1,
+            'rollForce': 0.1,
+            'minimumLinearSpeed': 0.1,
+            'minimumRotationalSpeed': 0.05,
+            'constantThrustDrag': 0.02,
+            'constantRollDrag': 0.04
+        }
+
     def draw(self, app):
         drawCircle(*renderCoords(app, self.pos), self.size * app.scale, fill = 'blue')
+        drawLine(*renderCoords(app, self.pos), *renderCoords(app, (self.pos[0], self.pos[1] + 5)), fill = 'black')
+
+
+    # Control methods
+    def thrustKeysPressed(self, key):
+        if key in {'w', 'a', 's', 'd'}:
+            player.thrust = [
+                ( int(key == 'w') - int(key == 's') ) * self.constants['thrustForce']
+                ( int(key == 'd') - int(key == 'a') ) * self.constants['rollForce']
+        ]
+
+    def thrustKeysHeld(self, keyList):
+        setKeys = set(keyList)
+        if setKeys.intersection({'w', 'a', 's', 'd'}) != set(): # Non-empty intersection, so at least 1 is held
+            player.thrust = [
+                ( int('w' in setKeys) - int('s' in setKeys) ) * self.constants['thrustForce'],
+                ( int('d' in setKeys) - int('a' in setKeys) ) * self.constants['rollForce']
+            ]
+    
+    def thrustKeysReleased(self):
+        player.thrust = [0, 0]
+
+    def generalKeysPressed(self, app, key):
+        pass
+    
+    def generalKeysHeld(self, app, keyList):
+        app.scaleChangeDirection = int('up' in keyList) - int('down' in keyList)
+
+    def generalKeysReleased(self, app, key):
+        app.scaleChangeDirection = 0
+
+
+# A big object that can move around in the world
+class Planet():
+    Planets = []
+
+    def __init__(self, pos, vel, mass):
+        self.pos = pos
+        self.vel = vel
+        self.mass = mass
+
+# Simplified to collide as a ball
+class SpherePlanet():
+    Planets = []
+
+    def __init__(self, pos, vel, mass, size, color):
+        self.pos = pos
+        self.vel = vel
+        self.mass = mass
+        self.color = color
+        self.size = size
+
+        self.collisionRadius = self.size
+
+        SpherePlanet.Planets.append(self)
+
+        # Set pos angle to default if not defined
+        if len(self.pos) < 3:
+            self.pos = (
+                self.pos[0],
+                self.pos[1],
+                0 # Default angle
+            )
+
+    # Collision Mesh Generation
+    def setCollisionMesh(self, sizeChange):
+        self.collisionRadius = self.size + sizeChange
+
+    # Motion
+    def rotate(self, rotateAmount):
+        self.pos[2] += rotateAmount
+    def orbit(self, centerPos, orbitAmount):
+        pass
+
+    # Rendering
+    def draw(self, app):
+        drawCircle(*renderCoords(app, self.pos), 
+                    self.size * app.scale, 
+                    rotateAngle = renderAngle(self.pos),
+                    fill = self.color)
+    
+    def drawCollider(self, app):
+        drawCircle(*renderCoords(app, self.pos), 
+                   self.collisionRadius * app.scale, 
+                   rotateAngle = renderAngle(self.pos),
+                   fill = None, border = 'red', dashes = True)
+
+# Collides as a polygonal mesh
+class LinePlanet():
+    Planets = []
+
+    def __init__(self, centerPos, vel, mass, mesh):
+        self.pos = centerPos
+        self.vel = vel
+        self.mass = mass
+        self.mesh = mesh
+        LinePlanet.Planets.append(self)
+
+    # Mesh Helping
+    def getRealCoordinates(self):
+        return [
+            (thisPoint[0] + self.pos[0], 
+             thisPoint[1] + self.pos[1]) 
+                for thisPoint in self.mesh
+        ]
+    
+    def getLinesFromPoints(self, points):
+        # Takes list of size-2 tuples, makes list of size-4
+        result = []
+        for i in range(len(points)):
+            # BEGINS by winding last to first
+            # then proceeds up the list
+            result.append(
+                (
+                    points[i-1][0],
+                    points[i-1][1],
+                    points[i][0],
+                    points[i][1]
+                )
+            )
+        return result # Range of 4-length tuples, line coordinates
+    
+    def printThisBody(self):
+        print( self.getLinesFromPoints(self.getRealCoordinates()) )
+
+    def setCollisionMesh(self, size):
+        for pointIndex in range(len(self.mesh)):
+            thisPointToExtend = self.mesh[pointIndex]
+        pass
+
+# === GLOBAL OBJECT GENERATION
+
+# WRANGLING OBJECTS
+
+# Master collision mesh generator, so I can pass in player class object
+def generateCollisionMeshes():
+    for thisPlanet in SpherePlanet.Planets:
+        thisPlanet.setCollisionMesh(player.size)
+    for thisPlanet in LinePlanet.Planets:
+        thisPlanet.setCollisionMesh(player.size)
+
+# INSTANCING
+Apple = SpherePlanet(
+    (100, -100),
+    (0, 0),
+    100,
+    50,
+    'red'
+)
+
+Quadrangle = LinePlanet(
+    (-100, -100),
+    (0, 0),
+    100,
+    [(-10, -10), (-10, 10), (10, 10), (10, -10)]
+)
 
 player = Player([-30, 0, 0], [0, 0, 0], [0, 0], 30, 1)
+greenBallBall = Helperball((600, 200), 300, 'green')
+greenBallLine = Helperline((600, 200), (600, 600), 5, 'black')
 
+greenPlanet = SpherePlanet((500, 200), (0, 0), 30, 300, 'green')
+
+# === RENDERING ===
+
+# SCREEN ORIGIN
+
+# Placing the origin at the screen center
+def setRenderOrigin(app, posX = 0.5, posY = 0.5):
+    app.renderOrigin = (app.width * posX, app.height * posY)
+
+def drawRenderOrigin(app):
+    drawCircle(*app.renderOrigin, 3 * app.scale, fill = 'black')
+
+# HELPERS FOR MASTER RENDERING
+
+# Translation helper
+def renderTranslate(x, y, cx, cy):
+    return x - cx, y - cy
+
+# Rotation helper
+def renderRotate(x, y, theta):
+    theta = math.radians(theta)
+    rotatedX = math.cos(theta) * x - math.sin(theta) * y
+    rotatedY = math.sin(theta) * x + math.cos(theta) * y
+    return rotatedX, rotatedY
+
+# Scale helper
+def renderScale(app, x, y):
+    return x * app.scale, y * app.scale
+
+# Turning to screen coordinate helper
+def renderScreenshift(app, x, y):
+    return app.renderOrigin[0] + x, app.renderOrigin[1] - y
+
+# MASTER RENDERING
+
+# Master renderer, spits out coordinates shifted by player's position, rotation, screen scale, and screen position
+def renderCoords(app, posTuple):
+    xReal, yReal = posTuple[0], posTuple[1]
+    if len(posTuple) == 3: # I want it to accept both coord and coord + rotation
+        thetaReal = posTuple[2]
+    else:
+        thetaReal = None
+
+    xCam, yCam = player.pos[0], player.pos[1]
+    thetaCam = player.pos[2]
+    
+    # Shift the coordinates in realspace to put the camera at origin, scale all as well
+    tx, ty = renderTranslate(xReal, yReal, xCam, yCam)
+    rx, ry = renderRotate(tx, ty, thetaCam)
+    finalx, finaly = renderScale(app, rx, ry)
+    
+    # Shift to render scheme
+    return renderScreenshift(app, finalx, finaly)
+
+# Rotation handler for non-point objects (CMU graphics bodies, images)
+def renderAngle(rotationCoord): 
+    trueBodyAngle = rotationCoord[2] if isinstance(rotationCoord, tuple) else rotationCoord
+    return trueBodyAngle - player.pos[2] 
+
+# SCALE MANAGEMENT AND CONTROL
+
+# Initialize screen scale
+def setScaleStart(app):
+    app.scale = 1
+    app.scaleChangeDirection = 0
+
+# Changes screen scale based on current state of app.scaleChangeDirection
+def stepScale(app):
+    scaleMax = 5
+    scaleMin = 0.1
+    # Short circuit if it's even relevant, then ensure within bounds
+    if (app.scaleChangeDirection != 0 and
+        (app.scaleChangeDirection == 1 and app.scale < scaleMax) or 
+        (app.scaleChangeDirection == -1 and app.scale > scaleMin)):
+            scaleFactor = 1 + (0.1 * app.scaleChangeDirection)
+            app.scale *= scaleFactor
 
 # === PHYSICS MATHEMATICS ===
 
-# Helper collection
-
-
-def hypotenuse(a, b):
-    return (a ** 2 + b ** 2) ** 0.5
-
-def distance(x1, y1, x2, y2):
-    return( (y2 - y1) ** 2 + (x2 - x1) ** 2 ) ** 0.5
-
-# Player Physics
-linearThreshold = 0.1
-rotationalThreshold = 0.1
-constantThrustDrag = 0.02
-constantRollDrag = 0.04
-
+# PLAYER PHYSICS
 def takePlayerPhysicsStep(app):
     fNetx, fNety = calcPlayerNetForce(app)
     # Acceleration, velocity, position
@@ -188,7 +352,7 @@ def takePlayerPhysicsStep(app):
     player.vel[1] += ddy
     player.vel[2] += ddTheta
 
-    #wsnapVelocitiesToZero()
+    snapVelocitiesToZero()
     
     player.pos[0] += player.vel[0]
     player.pos[1] += player.vel[1]
@@ -199,119 +363,71 @@ def calcPlayerNetForce(app):
     fNetx += player.thrust[0] * math.sin(math.radians(player.pos[2]))
     fNety += player.thrust[0] * math.cos(math.radians(player.pos[2]))
 
-    dxPlanet = app.objectOnePos[0] - player.pos[0]
-    dyPlanet = app.objectOnePos[1] - player.pos[1]
+    dxPlanet = greenBallBall.centerPos[0] - player.pos[0]
+    dyPlanet = greenBallBall.centerPos[1] - player.pos[1]
 
     bigG = 30
     fNetx += ( bigG * player.mass / (dxPlanet ** 2 + dyPlanet ** 2) ) * dxPlanet
     fNety += ( bigG * player.mass / (dxPlanet ** 2 + dyPlanet ** 2) ) * dyPlanet
 
-    #fNetx -= player.vel[0] * constantThrustDrag
-    #fNety -= player.vel[1] * constantThrustDrag
+    #fNetx -= player.vel[0] * player.constants['constantThrustDrag']
+    #fNety -= player.vel[1] * player.constants['constantThrustDrag']
     return fNetx, fNety
 
 def calcPlayerNetTorque(app):
     fNetTheta = 0
     fNetTheta += player.thrust[1]
-    fNetTheta -= player.vel[2] * constantRollDrag
+    fNetTheta -= player.vel[2] * player.constants['constantRollDrag']
     return fNetTheta
 
 def snapVelocitiesToZero():
     if player.thrust[0] == 0:
-        if abs(player.vel[0]) < linearThreshold:
+        if abs(player.vel[0]) < player.constants['minimumLinearSpeed']:
             player.vel[0] = 0
-        if abs(player.vel[1]) < linearThreshold:
+        if abs(player.vel[1]) < player.constants['minimumLinearSpeed']:
             player.vel[1] = 0
     if player.thrust[1] == 0:
-        if abs(player.vel[2]) < rotationalThreshold:
+        if abs(player.vel[2]) < player.constants['minimumRotationalSpeed']:
             player.vel[2] = 0
-
-# Movement Keys
-def playerPressedKeyThrust(app, key): # Changes value based on the single key press input
-    if key in {'w', 'a', 's', 'd'}:
-        app.Thrusting = True
-        player.thrust = [
-            ( int(key == 'w') - int(key == 's') ) * app.playerThrustConstant,
-            ( int(key == 'd') - int(key == 'a') ) * app.playerTwistConstant
-    ]
-
-def playerHeldKeyThrust(app, keyList): # Changes values based on being in the list of held keys
-    if 'w' in keyList or 'a' in keyList or 's' in keyList or 'd' in keyList:
-        app.Thrusting = True
-        player.thrust = [
-            ( int('w' in keyList) - int('s' in keyList) ) * app.playerThrustConstant,
-            ( int('d' in keyList) - int('a' in keyList) ) * app.playerTwistConstant
-    ]
-
-def playerReleasedKeyThrust(app, key):
-    app.Thrusting = False
-    player.thrust = [0, 0]
 
 # === EVENT HANDLING ===
 
-# Stepping
+# STEPPING
 
 def onStep(app):
     takePlayerPhysicsStep(app)
-    setRenderOrigin(app) # I want it to center on any screen size, for now
-    app.scale *= app.directionScaleChange
-
-# Player Interaction
+    setRenderOrigin(app) # so it always centers
+    stepScale(app)
+    
+# PLAYER INTERACTION
 
 def onKeyPress(app, key):
-    playerPressedKeyThrust(app, key)
+    player.thrustKeysPressed(key)
+    player.generalKeysPressed(app, key)
 
 def onKeyHold(app, key):
-    playerHeldKeyThrust(app, key)
-    if app.scale < 5 and 'up' in key:
-        app.directionScaleChange = 1.1
-    elif app.scale > 0.1 and 'down' in key:
-        app.directionScaleChange = 0.9
+    player.thrustKeysHeld(key)
+    player.generalKeysHeld(app, key)
 
 def onKeyRelease(app, key):
-    playerReleasedKeyThrust(app, key)
-    app.directionScaleChange = 1
+    player.thrustKeysReleased()
+    player.generalKeysReleased(app, key)
 
-# === RENDERING ===
-
-def setRenderOrigin(app, posX = 0.5, posY = 0.5):
-    app.renderOrigin = (app.width * posX, app.height * posY)
-
-def renderTranslate(x, y, cx, cy):
-    return x - cx, y - cy
-
-def renderRotate(x, y, theta):
-    theta = math.radians(theta)
-    rotatedX = math.cos(theta) * x - math.sin(theta) * y
-    rotatedY = math.sin(theta) * x + math.cos(theta) * y
-    return rotatedX, rotatedY
-
-def renderCoords(app, posTuple): # The master renderer
-    xReal, yReal = posTuple[0], posTuple[1]
-    if len(posTuple) == 3: # I want it to accept both coord and coord + rotation
-        thetaReal = posTuple[2]
-    else:
-        thetaReal = None
-
-    xCam, yCam = player.pos[0], player.pos[1]
-    thetaCam = player.pos[2]
-    
-    # Shift the coordinates in realspace to put the camera at origin
-    tx, ty = renderTranslate(xReal, yReal, xCam, yCam)
-    rx, ry = renderRotate(tx, ty, thetaCam)
-    finalx, finaly = rx * app.scale, ry * app.scale
-    
-    # Shift to render scheme
-    xRender, yRender = app.renderOrigin[0] + finalx, app.renderOrigin[1] - finaly
-    return xRender, yRender
-# === DRAWING ===
+# DRAWING
 
 def redrawAll(app): 
-    drawCircle(*renderCoords(app, app.objectOnePos), 400 * app.scale, fill = 'green')
-    drawLineTopX, drawLineTopY = app.objectOnePos[0], app.objectOnePos[0] + 30
-    drawLine(*renderCoords(app, app.objectOnePos), *renderCoords(app, (drawLineTopX, drawLineTopY)), lineWidth = 2 * app.scale, fill = 'black')
+    #greenBallBall.draw(app)
+    #greenBallLine.draw(app)
 
-    drawPlayer(app)
+    greenPlanet.draw(app)
+    greenPlanet.drawCollider(app)
+
+    Apple.draw(app)
+    #drawCircle(*renderCoords(app, app.objectOnePos), 400 * app.scale, fill = 'green')
+    #drawLineTopX, drawLineTopY = app.objectOnePos[0], app.objectOnePos[0] + 30
+    #drawLine(*renderCoords(app, app.objectOnePos), *renderCoords(app, (drawLineTopX, drawLineTopY)), lineWidth = 2 * app.scale, fill = 'black')
+
+    player.draw(app)
     drawRenderOrigin(app)
 
     drawLabel(f"Thrust: {player.thrust}", 100, 30, align = 'left')
@@ -329,13 +445,18 @@ def redrawAll(app):
 
     
 
-# === Early Stage CMU-Graphics Renderers
+# === APP INITIALIZATION ===
 
-def drawRenderOrigin(app):
-    drawCircle(*app.renderOrigin, 3 * app.scale, fill = 'black')
+def debugGamut(app):
+    app.isTheGravityOn = False
 
-def drawPlayer(app):
-    player.draw(app)
+def onAppStart(app):
+    setRenderOrigin(app)
+    setScaleStart(app)
+
+    generateCollisionMeshes()
+    # Game state
+    app.stepsPerSecond = 30
 
 # === MAIN ===
 
