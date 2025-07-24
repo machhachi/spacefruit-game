@@ -6,7 +6,60 @@
 # Andrew ID: awerth2
 # Recitation: U
 
-# Cumulative Hours = 30
+# Cumulative Hours = 31
+
+# <=> Desires <=>
+
+# - Line planets
+# - General gravity
+
+# General minor bugs
+# - Make gravity a smallbody method and not specific to one planet
+#   - Have player modify its physics calculations so it includes thrust in net force
+
+# Physics engine level developments
+
+# - Test collision on moving planets?
+# - add planet velocity on collision
+
+# - Small body collision on line planets
+# - Small body self-collision, ideally implementing momentum logic to move both self and other body
+
+# - Small body contains an elasticity variable, to be 
+#   - A) customized per smallbody instance (i.e. fruit)
+#   - B) varied based on player orientation (0 elasticity on landing gear side)
+
+# - Collision friction as well
+#   - Any collision should also be aware of its perpendicular velocity, so normal velocity - planet component velocity
+#       - Make these values somewhat global? Calculate radialwise velocity and pass that into both collision and friction management
+#   - Multiply perpendicular velocity by some friction dampening multiplier before adding back the post-collision velocity
+
+
+# Future envisioned code simplifications
+# - Master (planet) collider tool
+#   - Should only need to process the colliding object, planet behaviors, how far smallbody is inside the surface, and normal direction of surface
+#   - Could and should make subclass methods for Sphereplanet and Lineplanet that handle that
+#       - This would run in a global list of instances, and they should be instances of the subplanets first so I don't envision issues
+#   - master collider would spit out new smallbody velocity, after running it through friction and collision handlers
+
+# - Line planets get a circular detection radius to even bother testing lines for intersection
+
+# Entity culling for rendering at certain distance(all things have pos attribute)
+# Perhaps entity culling for gravity as well
+
+
+# Entirely new mechanisms
+# - Player 'burst' thrust
+#   - Some integer capacity of burst thrust
+#   - When thrusting, if has burst thrust, flies much faster but depletes burst
+#   - Burst recharged slowly in space or quickly when landed
+#   - Comes with HUD graphic
+
+# - HUD gravity indicators
+
+# Dream planets
+# - Black hole core, with central black hole
+#   - Check desmos for point math. Would be a 
 
 # === IMPORTS ===
 
@@ -94,10 +147,6 @@ class SmallBody():
             if centerDistance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
                 # Colliding with this one!
                 xComp, yComp = thisPlanet.getNormalVectorTo(self.pos) # unit normal vector
-                centerIndicator.setPos(self.pos, vecAdd(self.pos, 
-                                                        (xComp * 10, yComp * 10)
-                                                        ))
-
                 vFromPlanet = vecDot(self.vel[0], self.vel[1], xComp, yComp) # magnitude velocity in direction of planet center
                 vXFromPlanet, vYFromPlanet = xComp * vFromPlanet, yComp * vFromPlanet # components thereof
 
@@ -117,15 +166,14 @@ class SmallBody():
                     self.vel[0] -= vXFromPlanet * elasticity
                     self.vel[1] -= vYFromPlanet * elasticity
                 
+                centerIndicator.setPos(self.pos, vecAdd(self.pos, (xComp * 10, yComp * 10)))
                 velocityIndicator.setPos(self.pos, vecAdd(self.pos, (vXFromPlanet * 10, vYFromPlanet * 10)))
 
-                return # I have decided that you'll never crash into two at once in one step. Saves us some time
+                break # I have decided that you'll never crash into two at once in one step. Saves us some time
             
             else:
                 centerIndicator.setPos((0, 0), (0, 0))
                 velocityIndicator.setPos((0, 0), (0, 0))
-
-                
 
     def collideWithLines(self):
         pass
@@ -299,10 +347,10 @@ player = Player([-30, 0, 0], [0, 0, 0], 30, 50)
 centerIndicator = Helperline((0, 0, 0), (0, 0, 0), 1, 'red')
 velocityIndicator = Helperline((0, 0, 0), (0, 0, 0), 2, 'yellow')
 
-greenPlanet = SpherePlanet((600, 200), (0, 0), 300, 300, 'green')
+greenPlanet = SpherePlanet((600, 200), (0, 0), 300, 10, 'green')
 greenHead = Helperball((500, 500), 30)
 
-Apple = SpherePlanet( (100, -100), (0, 0), 100, 50, 'red')
+Apple = SpherePlanet( (100, -100), (0, 0), 100, 100, 'red')
 
 Quadrangle = LinePlanet(
     (-100, -100),
@@ -343,8 +391,8 @@ def calcPlayerNetForce(app):
     fNetx += ( app.bigG * player.mass * greenPlanet.mass / (dxPlanet ** 2 + dyPlanet ** 2) ) * dxPlanet
     fNety += ( app.bigG * player.mass * greenPlanet.mass / (dxPlanet ** 2 + dyPlanet ** 2) ) * dyPlanet
 
-    #fNetx -= player.vel[0] * player.constants['constantThrustDrag']
-    #fNety -= player.vel[1] * player.constants['constantThrustDrag']
+    fNetx -= player.vel[0] * player.constants['constantThrustDrag']
+    fNety -= player.vel[1] * player.constants['constantThrustDrag']
     return fNetx, fNety
 
 def calcPlayerNetTorque(app):
