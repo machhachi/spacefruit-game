@@ -10,6 +10,7 @@
 
 # <=> Desires <=>
 
+# Real current projects
 # - Line planets
 # - General gravity
 
@@ -142,6 +143,11 @@ class SmallBody():
 
         SmallBody.Instances.append(self)
 
+    # Physics 
+    def takePhysicsStep(self):
+        pass
+
+    # Collision
     def collideWithSpheres(self):
         for thisPlanet in SpherePlanet.Instances:
             if centerDistance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
@@ -186,6 +192,16 @@ class SmallBody():
         self.collideWithLines()
         self.collideWithSmallbodies()
     
+    # Rendering
+    def draw(self, app):
+        drawCircle(*renderCoords(app, self.pos), self.size * app.scale, fill = 'black')
+        drawStar(*renderCoords(app, self.pos), self.size * app.scale, 5, fill = 'black', rotateAngle = renderAngle(self.pos[2]))
+
+    # Step
+    def step(self, app):
+        self.collide()
+        self.takePhysicsStep()
+
 class Player(SmallBody):
     def __init__(self, pos, vel, size, mass):
         super().__init__(pos, vel, size, mass)
@@ -202,7 +218,7 @@ class Player(SmallBody):
 
     def draw(self, app):
         drawCircle(*renderCoords(app, self.pos), self.size * app.scale, fill = 'blue')
-        drawLine(*renderCoords(app, self.pos), *renderCoords(app, (self.pos[0], self.pos[1] + 5)), fill = 'black')
+        drawStar(*renderCoords(app, self.pos), self.size * app.scale, 5, fill = 'white', rotateAngle = renderAngle(self.pos[2]))
 
 
     # Control methods
@@ -232,6 +248,57 @@ class Player(SmallBody):
 
     def generalKeysReleased(self, app, key):
         app.scaleChangeDirection = 0
+
+class Fruit(SmallBody):
+    def __init__(self, pos, vel, type, customSize = None, customMass = None):
+        super().__init__(pos, vel)
+        
+        typeDict = {
+            'debug':{
+                'Name':'Debug Fruit',
+                'Size':20,
+                'Mass':30,
+                'Image':['Circle','orchid'],
+                'Flavortext':'Testing flavortext'
+            },
+            'apple':{
+                'Name':'Red Delicious',
+                'Size':15,
+                'Mass':30,
+                'Image':['Sprite','fake apple url here'],
+                'Flavortext':"The shittiest of them all. We're taking points away from you, just for having this."
+            },
+            'jackfruit':{
+                'Name':'Gravitational Jackfruit',
+                'Size':80,
+                'Mass':100,
+                'Image':['Sprite','evil jackfriut url here'],
+                'Flavortext':"The grand daddy. This thing will wipe out stars, if you're not careful."
+            },
+            'whitepeach':{
+                'Name':'Starlight Peach',
+                'Size':25,
+                'Mass':25,
+                'Image':['Sprite','fake peach url here'],
+                'Flavortext':"So light it nearly floats. You could lose this one, among all the stars."
+            },
+            'cherry':{
+                'Name':'Space Debris Cherry',
+                'Size':5,
+                'Mass':5,
+                'Image':['Sprite','wrong cherry url here'],
+                'Flavortext':"Small and sweet. The pit appears to be, somehow, a piece of a satellite."
+            },
+        }
+        
+        thisFruitType = typeDict[type]
+        self.name = thisFruitType['Name']
+        self.size = thisFruitType['Size'] if customSize == None else customSize
+        self.mass = thisFruitType['Mass'] if customMass == None else customMass
+        
+        
+
+
 
 
 # A big object that can move around in the world
@@ -343,6 +410,8 @@ def generateCollisionMeshes():
 # INSTANCING
 
 player = Player([-30, 0, 0], [0, 0, 0], 30, 50)
+
+appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
 
 centerIndicator = Helperline((0, 0, 0), (0, 0, 0), 1, 'red')
 velocityIndicator = Helperline((0, 0, 0), (0, 0, 0), 2, 'yellow')
@@ -555,7 +624,7 @@ def onAppStart(app):
     generateCollisionMeshes()
     # Game state
     app.stepsPerSecond = 30
-    app.bigG = 1
+    app.bigG = 2
 
     for objectClass in [Helperball, Helperline, SmallBody, Planet]:
         print("How calling objects of", objectClass)
