@@ -144,10 +144,60 @@ class SmallBody():
         SmallBody.Instances.append(self)
 
     # Physics 
-    def takePhysicsStep(self):
-        pass
+    def takePhysicsStep(self, app):
+        # Force
+        fNetx, fNety = self.calcNetForce(app)
+        fNetTheta = self.calcNetTorque()
+
+        # Acceleration, velocity, position
+        ddx = fNetx / player.mass
+        ddy = fNety / player.mass
+        ddTheta = fNetTheta / player.mass
+
+        self.vel[0] += ddx
+        self.vel[1] += ddy
+        self.vel[2] += ddTheta
+        
+        self.pos[0] += self.vel[0]
+        self.pos[1] += self.vel[1]
+        self.pos[2] += self.vel[2]
+
+    def calcNetForce(self):
+        fNetx, fNety = 0, 0
+
+        fGx, fGy = self.getAllPlanetGravity(app)
+
+        fNetx += fGx
+        fNety += fGy
+        return fNetx, fNety
+
+    def getAllPlanetGravity(self, app):
+        fGx, fGy = 0, 0
+        for thisPlanet in Planet.Instances:
+
+
+            # Get distance vector to planet
+            dxPlanet, dyPlanet = thisPlanet.pos[0] - self.pos[0], thisPlanet.pos[1] - self.pos[1]
+            # Crunch newtonian gravity: gmM / r^2
+            fGThisPlanet = ( app.bigG * self.mass * thisPlanet.mass ) / (dxPlanet ** 2 + dyPlanet ** 2)
+
+            xHat, yHat = vecUnit(dxPlanet, dyPlanet)
+            fGx += fGThisPlanet * xHat
+            fGy += fGThisPlanet * yHat
+
+            print("From", thisPlanet, "experiencing", fGThisPlanet, "in", dxPlanet, ",", dyPlanet)
+        
+        return fGx, fGy
+
+    def calcNetTorque(self):
+        return 0
 
     # Collision
+    def collide(self):
+        self.collideWithSpheres()
+        self.collideWithLines()
+        self.collideWithSmallbodies()
+
     def collideWithSpheres(self):
         for thisPlanet in SpherePlanet.Instances:
             if centerDistance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
@@ -172,8 +222,8 @@ class SmallBody():
                     self.vel[0] -= vXFromPlanet * elasticity
                     self.vel[1] -= vYFromPlanet * elasticity
                 
-                centerIndicator.setPos(self.pos, vecAdd(self.pos, (xComp * 10, yComp * 10)))
-                velocityIndicator.setPos(self.pos, vecAdd(self.pos, (vXFromPlanet * 10, vYFromPlanet * 10)))
+                #centerIndicator.setPos(self.pos, vecAdd(self.pos, (xComp * 10, yComp * 10)))
+                #velocityIndicator.setPos(self.pos, vecAdd(self.pos, (vXFromPlanet * 10, vYFromPlanet * 10)))
 
                 break # I have decided that you'll never crash into two at once in one step. Saves us some time
             
@@ -185,12 +235,7 @@ class SmallBody():
         pass
     
     def collideWithSmallbodies(self):
-        pass
-
-    def collide(self):
-        self.collideWithSpheres()
-        self.collideWithLines()
-        self.collideWithSmallbodies()
+        pass  
     
     # Rendering
     def draw(self, app):
@@ -200,7 +245,7 @@ class SmallBody():
     # Step
     def step(self, app):
         self.collide()
-        self.takePhysicsStep()
+        self.takePhysicsStep(app)
 
 class Player(SmallBody):
     def __init__(self, pos, vel, size, mass):
@@ -216,10 +261,48 @@ class Player(SmallBody):
             'constantRollDrag': 0.04
         }
 
+    # Physics 
+    # Uses default method for takePhysicsStep
+        
+    def calcNetForce(self, app):
+        # Force
+        fNetx, fNety = 0, 0 
+
+        # Player input
+        fNetx += self.thrust[0] * math.sin(math.radians(self.pos[2]))
+        fNety += self.thrust[0] * math.cos(math.radians(self.pos[2]))
+
+        # Gravity
+        # Gravity method is the same for small bodies as is for player
+        fGx, fGy = self.getAllPlanetGravity(app)
+        fNetx += fGx
+        fNety += fGy
+
+        # Drag
+        fNetx -= self.vel[0] * self.constants['constantThrustDrag']
+        fNety -= self.vel[1] * self.constants['constantThrustDrag']
+        return fNetx, fNety
+
+    def calcNetTorque(self):
+        fNetTheta = 0
+        fNetTheta += self.thrust[1]
+        fNetTheta -= self.vel[2] * self.constants['constantRollDrag']
+        return fNetTheta
+
+    def snapVelocitiesToZero(self):
+        if self.thrust[0] == 0:
+            if abs(self.vel[0]) < self.constants['minimumLinearSpeed']:
+                self.vel[0] = 0
+            if abs(self.vel[1]) < self.constants['minimumLinearSpeed']:
+                self.vel[1] = 0
+        if self.thrust[1] == 0:
+            if abs(self.vel[2]) < self.constants['minimumRotationalSpeed']:
+                self.vel[2] = 0
+    
+    # Rendering
     def draw(self, app):
         drawCircle(*renderCoords(app, self.pos), self.size * app.scale, fill = 'blue')
         drawStar(*renderCoords(app, self.pos), self.size * app.scale, 5, fill = 'white', rotateAngle = renderAngle(self.pos[2]))
-
 
     # Control methods
     def thrustKeysPressed(self, key):
@@ -331,6 +414,9 @@ class SpherePlanet(Planet):
                 self.pos[1],
                 0 # Default angle
             )
+        
+    def __repr__(self):
+        return "Planet"
 
     # Collision
     def setCollisionMesh(self, sizeChange):
@@ -411,74 +497,18 @@ def generateCollisionMeshes():
 
 player = Player([-30, 0, 0], [0, 0, 0], 30, 50)
 
-appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
+#appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
 
 centerIndicator = Helperline((0, 0, 0), (0, 0, 0), 1, 'red')
 velocityIndicator = Helperline((0, 0, 0), (0, 0, 0), 2, 'yellow')
 
-greenPlanet = SpherePlanet((600, 200), (0, 0), 300, 10, 'green')
+greenPlanet = SpherePlanet((600, 200), (0, 0), 300, 1000, 'green')
 greenHead = Helperball((500, 500), 30)
 
-Apple = SpherePlanet( (100, -100), (0, 0), 100, 100, 'red')
+Apple = SpherePlanet( (100, -100), (0, 0), 100, 200, 'red')
+Orange = SpherePlanet((300, -500), (50, 50), 250, 400, 'orange')
 
-Quadrangle = LinePlanet(
-    (-100, -100),
-    (0, 0),
-    100,
-    [(-10, -10), (-10, 10), (10, 10), (10, -10)]
-)
-
-
-# === PHYSICS MATHEMATICS ===
-
-# PLAYER PHYSICS
-def takePlayerPhysicsStep(app):
-    fNetx, fNety = calcPlayerNetForce(app)
-    # Acceleration, velocity, position
-    ddx = fNetx / player.mass
-    ddy = fNety / player.mass
-    ddTheta = calcPlayerNetTorque(app) / player.mass
-
-    player.vel[0] += ddx
-    player.vel[1] += ddy
-    player.vel[2] += ddTheta
-
-    snapVelocitiesToZero()
-    
-    player.pos[0] += player.vel[0]
-    player.pos[1] += player.vel[1]
-    player.pos[2] += player.vel[2]
-    
-def calcPlayerNetForce(app):
-    fNetx, fNety = 0, 0 
-    fNetx += player.thrust[0] * math.sin(math.radians(player.pos[2]))
-    fNety += player.thrust[0] * math.cos(math.radians(player.pos[2]))
-
-    dxPlanet = greenPlanet.pos[0] - player.pos[0]
-    dyPlanet = greenPlanet.pos[1] - player.pos[1]
-
-    fNetx += ( app.bigG * player.mass * greenPlanet.mass / (dxPlanet ** 2 + dyPlanet ** 2) ) * dxPlanet
-    fNety += ( app.bigG * player.mass * greenPlanet.mass / (dxPlanet ** 2 + dyPlanet ** 2) ) * dyPlanet
-
-    fNetx -= player.vel[0] * player.constants['constantThrustDrag']
-    fNety -= player.vel[1] * player.constants['constantThrustDrag']
-    return fNetx, fNety
-
-def calcPlayerNetTorque(app):
-    fNetTheta = 0
-    fNetTheta += player.thrust[1]
-    fNetTheta -= player.vel[2] * player.constants['constantRollDrag']
-    return fNetTheta
-
-def snapVelocitiesToZero():
-    if player.thrust[0] == 0:
-        if abs(player.vel[0]) < player.constants['minimumLinearSpeed']:
-            player.vel[0] = 0
-        if abs(player.vel[1]) < player.constants['minimumLinearSpeed']:
-            player.vel[1] = 0
-    if player.thrust[1] == 0:
-        if abs(player.vel[2]) < player.constants['minimumRotationalSpeed']:
-            player.vel[2] = 0
+#Quadrangle = LinePlanet((-100, -100),(0, 0),100,[(-10, -10), (-10, 10), (10, 10), (10, -10)])
 
 # === RENDERING ===
 
@@ -561,11 +591,11 @@ def stepScale(app):
 # STEPPING
 
 def onStep(app):
-    takePlayerPhysicsStep(app)
+    for body in SmallBody.Instances:
+        body.step(app)
     setRenderOrigin(app) # so it always centers
     stepScale(app)
 
-    player.collideWithSpheres()
     
 # PLAYER INTERACTION
 
@@ -589,7 +619,15 @@ def redrawAll(app):
         for instance in objectClass.Instances:
             instance.draw(app)
 
+    # Velocity line
+    #drawLine(*renderCoords(app, player.pos), *renderCoords(app, greenPlanet.pos))
+    drawLine(*renderCoords(app, player.pos), *renderCoords(app, vecAdd(player.pos, (player.vel[0] * 20, player.vel[1] * 20))), fill = 'red')
 
+    # Planet centerlines
+    for thisPlanet in Planet.Instances:
+        playerCoords = renderCoords(app, player.pos)
+        planetCoords = renderCoords(app, thisPlanet.pos)
+        drawLine(*playerCoords, *planetCoords, fill = 'blue')
     #greenPlanet.draw(app)
     #greenPlanet.drawCollider(app)
     #Apple.draw(app)
@@ -597,18 +635,18 @@ def redrawAll(app):
     #player.draw(app)
     drawRenderOrigin(app)
 
-    #drawLabel(f"Thrust: {player.thrust}", 100, 30, align = 'left')
-    #xThrust = math.sin(math.radians(player.pos[2]))
-    #yThrust = math.cos(math.radians(player.pos[2]))
-    #drawLabel(f"Angle Components: {xThrust}, {yThrust}", 100, 110, align = 'left')
+    drawLabel(f"Thrust: {player.thrust}", 100, 30, align = 'left')
+    xThrust = math.sin(math.radians(player.pos[2]))
+    yThrust = math.cos(math.radians(player.pos[2]))
+    drawLabel(f"Angle Components: {xThrust}, {yThrust}", 100, 110, align = 'left')
 
-    #drawLabel(f"Speed: {player.vel}", 100, 50, align = 'left')
-    #trueSpeed = hypotenuse(player.vel[0], player.vel[1])
-    #drawLabel(f"Absolute Speed:{trueSpeed}", 100, 70, align = 'left')
+    drawLabel(f"Speed: {player.vel}", 100, 50, align = 'left')
+    trueSpeed = hypotenuse(player.vel[0], player.vel[1])
+    drawLabel(f"Absolute Speed:{trueSpeed}", 100, 70, align = 'left')
 
-    #drawLabel(f"Pos: {player.pos}", 100, 90, align = 'left')
+    drawLabel(f"Pos: {player.pos}", 100, 90, align = 'left')
 
-    #drawLabel(f"Scale: {app.scale}", 100, 130, align = 'left')
+    drawLabel(f"Scale: {app.scale}", 100, 130, align = 'left')
 
     
 
