@@ -15,7 +15,10 @@
 # - General gravity
 
 # General minor bugs
-# 
+#   Rolling on smallbody sphere planet collisions never really hits zero
+#       Define some threshold below which it snaps to zero
+#       Perhaps do for linera velocity as well
+#       And then add back planet velocity at some point, after all the above
 
 # Physics engine level developments
 
@@ -29,18 +32,14 @@
 #   - A) customized per smallbody instance (i.e. fruit)
 #   - B) varied based on player orientation (0 elasticity on landing gear side)
 
-# - Collision friction as well
-#   - Any collision should also be aware of its perpendicular velocity, so normal velocity - planet component velocity
-#       - Make these values somewhat global? Calculate radialwise velocity and pass that into both collision and friction management
-#   - Multiply perpendicular velocity by some friction dampening multiplier before adding back the post-collision velocity
-
 
 # Future envisioned code simplifications
 # - Master (planet) collider tool
-#   - Should only need to process the colliding object, planet behaviors, how far smallbody is inside the surface, and normal direction of surface
-#   - Could and should make subclass methods for Sphereplanet and Lineplanet that handle that
-#       - This would run in a global list of instances, and they should be instances of the subplanets first so I don't envision issues
-#   - master collider would spit out new smallbody velocity, after running it through friction and collision handlers
+
+#   A polyname method that is called by smallbody in reference to both sphere and line planets. 
+#       Returns, based on player coordinates, the depth inside and surface normal of the relevant surface the smallbody is colliding.
+#       This is just part of the circle for sphere planets, and the relevant line for line planets.
+#   Allows collision to be globalized, as once that information is acquired, bouncing + skidding + rolling are identical betwee sphere and line
 
 # - Line planets get a circular detection radius to even bother testing lines for intersection
 
@@ -49,17 +48,28 @@
 
 
 # Entirely new mechanisms
-# - Player 'burst' thrust
-#   - Some integer capacity of burst thrust
-#   - When thrusting, if has burst thrust, flies much faster but depletes burst
-#   - Burst recharged slowly in space or quickly when landed
-#   - Comes with HUD graphic
+#   Gravity hand!!!!!
+#       A probe spawned at mouse coordinates backtranslated to realspace (oh god we gotta run that calculation in reverse????)
+#           That'll be a hell of a black box function
+#           And it'll also be relevant, in the scale calculations, to define a furthest distance from the player the thing can be at
+#       Probe, when mouse is being held, exerts a strong gravity on, i guess, all non-player smallbodies
 
-# - HUD gravity indicators
+#   Drawing line planets on top of other planets!
+#       Not too hard if static (example, can we get a stonehenge arch on a sphere planet? Easily, with a no-mass line planet)
+#       But reason out some sort of velocity parenting mechanism as well
+
+# HUD elemtents needed:
+#   Boost meter
+#   Strongest gravity influence
+#   Velocity
+
+# Bottom of screen aligns to biggest gravity influence
 
 # Dream planets
-# - Black hole core, with central black hole
-#   - Check desmos for point math. Would be a 
+#   Black hole core, with central black hole
+#       Check desmos for point math. Would require hella culling
+#   Derelict station, a no-grav line planet
+#   
 
 # === IMPORTS ===
 
@@ -236,16 +246,18 @@ class SmallBody():
                     newVYTangential = vYTangential * (1 - friction)
 
                     # Roll component: rolling. Whatever was lost in tangential, we assume it goes about fully into rolling.
-                    # To get the direction: we need to know if we're moving CW or CCW about the planet 
-                    # If you rotate the normal vector (points outwards) 90 degrees CW, that now points in the CW-about-planet direction
-                    # And we can use dot product to see if we're aligned or unaligned with that
+                    #   To get the direction: we need to know if we're moving CW or CCW about the planet 
+                    #   If you rotate the normal vector (points outwards) 90 degrees CW, that now points in the CW-about-planet direction
+                    #   And we can use dot product to see if we're aligned or unaligned with that
 
                     # Vector transformation for rotating CW 90 degrees
                     surfaceTangentX, surfaceTangentY = normalY, -normalX
                     rollVelocity = vecDot(vXTangential, vYTangential, surfaceTangentX, surfaceTangentY) * friction
 
-                    rollConversionFactor = 1 / self.size # Numerator is roughly 180/pi, conversion from radians to degrees
+                    # Convert linear to angular by diving by radius
+                    rollConversionFactor = 1 / self.size
                     
+                    # Decreasing old angular velocity is a crack solution to the rolling-amplification issue I had a bit ago
                     oldRollCarryover = self.vel[2] * 0.95
                     newVTheta = oldRollCarryover + rollVelocity * rollConversionFactor
 
