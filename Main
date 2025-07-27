@@ -15,8 +15,7 @@
 # - General gravity
 
 # General minor bugs
-# - Make gravity a smallbody method and not specific to one planet
-#   - Have player modify its physics calculations so it includes thrust in net force
+# 
 
 # Physics engine level developments
 
@@ -68,6 +67,10 @@ from cmu_graphics import *
 import math
 
 # === MATH HELPERS ===
+
+# Arithmetic
+def sign(x):
+    return 1 if x >= 0 else -1
 
 # Geometry
 def hypotenuse(a, b):
@@ -131,7 +134,7 @@ class Helperline():
 
 # === MAIN CLASSES ===
 
-# A small object that collides with planets
+# SmallBodies: A small object that collides with planets
 class SmallBody():
     Instances = []
 
@@ -184,9 +187,6 @@ class SmallBody():
             xHat, yHat = vecUnit(dxPlanet, dyPlanet)
             fGx += fGThisPlanet * xHat
             fGy += fGThisPlanet * yHat
-
-            print("From", thisPlanet, "experiencing", fGThisPlanet, "in", dxPlanet, ",", dyPlanet)
-        
         return fGx, fGy
 
     def calcNetTorque(self):
@@ -200,36 +200,61 @@ class SmallBody():
 
     def collideWithSpheres(self):
         for thisPlanet in SpherePlanet.Instances:
-            if centerDistance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
-                # Colliding with this one!
-                xComp, yComp = thisPlanet.getNormalVectorTo(self.pos) # unit normal vector
-                vFromPlanet = vecDot(self.vel[0], self.vel[1], xComp, yComp) # magnitude velocity in direction of planet center
-                vXFromPlanet, vYFromPlanet = xComp * vFromPlanet, yComp * vFromPlanet # components thereof
 
-                if vecDot(xComp, yComp, vXFromPlanet, vYFromPlanet) < 0: # Negative -> misaligned -> moving inwards towards planet
-                    # (Note: if you were to check position interiority and not velocity, then you get rubber banding via compounding collisions)
-                    # (This way, ideally, any collision should only have 1 velocity addition before the object stops going inwards)
+            # Test if we are within the collision circle, thus, colliding with the body
+            if centerDistance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
+
+                normalX, normalY = thisPlanet.getNormalVectorTo(self.pos) # unit normal vector
+                vRadial = vecDot(self.vel[0], self.vel[1], normalX, normalY) # magnitude velocity in direction of planet center
+                vXRadial, vYRadial = normalX * vRadial, normalY * vRadial # components thereof
+
+                if vecDot(normalX, normalY, vXRadial, vYRadial) < 0: # Negative -> misaligned -> moving inwards towards planet
+                    # (Note: if you were to check position interiority and not velocity, then you might repeat this collision)
+                    # (That would be rubber-banding, where you get insane collisions because one phys step isn't enough to un-collide you)
+                    # (This way, any collision will only have 1 velocity change before the object stops going inwards)
 
                     # Position adjustment
-                    # Following becomes negative if we are within collision bounds
-                    # So subtract it out of position to push it to the exact bound
+                    # 'Altitude', inward-surface-to-surface dist, is negative since we are within collision bounds
+                    # So subtract it out of position to push smallbody to the exact bound
                     altitude = centerDistance(self.pos, thisPlanet.pos) - (self.size + thisPlanet.size)
-                    self.pos[0] -= altitude * xComp
-                    self.pos[1] -= altitude * yComp
-                    # Speed adjustment
-                    # Now that we've calculated how fast we approach the planet, just subtract that
-                    elasticity = 1.3 # Portion of velocity added back. 1 for perfect inelastic (v -> 0), 2 for perfect elastic (v -> -v)
-                    self.vel[0] -= vXFromPlanet * elasticity
-                    self.vel[1] -= vYFromPlanet * elasticity
-                
-                #centerIndicator.setPos(self.pos, vecAdd(self.pos, (xComp * 10, yComp * 10)))
-                #velocityIndicator.setPos(self.pos, vecAdd(self.pos, (vXFromPlanet * 10, vYFromPlanet * 10)))
+                    self.pos[0] -= altitude * normalX
+                    self.pos[1] -= altitude * normalY
+
+                    # Velocity adjustment
+                    # First, extract radial and tangential velocity
+                    vXTangential = self.vel[0] - vXRadial
+                    vYTangential = self.vel[1] - vYRadial
+
+                    # Radial component: "bounce" speed. Output should be 0x original (inelastic) up to -1x(elastic)
+                    elasticity = 0.5
+                    newVXRadial = -vXRadial * elasticity
+                    newVYRadial = -vYRadial * elasticity
+
+                    # Tangential component: "skid" speed. Multiply by some decreasing fraction, and convert some to rolling.
+                    friction = 0.7
+                    newVXTangential = vXTangential * (1 - friction)
+                    newVYTangential = vYTangential * (1 - friction)
+
+                    # Roll component: rolling. Whatever was lost in tangential, we assume it goes about fully into rolling.
+                    # To get the direction: we need to know if we're moving CW or CCW about the planet 
+                    # If you rotate the normal vector (points outwards) 90 degrees CW, that now points in the CW-about-planet direction
+                    # And we can use dot product to see if we're aligned or unaligned with that
+
+                    # Vector transformation for rotating CW 90 degrees
+                    surfaceTangentX, surfaceTangentY = normalY, -normalX
+                    rollVelocity = vecDot(vXTangential, vYTangential, surfaceTangentX, surfaceTangentY) * friction
+
+                    rollConversionFactor = 1 / self.size # Numerator is roughly 180/pi, conversion from radians to degrees
+                    
+                    oldRollCarryover = self.vel[2] * 0.95
+                    newVTheta = oldRollCarryover + rollVelocity * rollConversionFactor
+
+                    # Recombine 
+                    self.vel[0] = newVXRadial + newVXTangential
+                    self.vel[1] = newVYRadial + newVYTangential
+                    self.vel[2] = newVTheta
 
                 break # I have decided that you'll never crash into two at once in one step. Saves us some time
-            
-            else:
-                centerIndicator.setPos((0, 0), (0, 0))
-                velocityIndicator.setPos((0, 0), (0, 0))
 
     def collideWithLines(self):
         pass
@@ -251,15 +276,63 @@ class Player(SmallBody):
     def __init__(self, pos, vel, size, mass):
         super().__init__(pos, vel, size, mass)
         self.thrust = [0, 0]
+        self.boostMeter = 100
+        self.boostMax = 100
+        self.boostRefillRate = 1
+
+        self.thrustConstants = {
+            'thrustForce': 5,
+            'rollForce': 2,
+            'boostMult': 2
+        }
 
         self.constants = {
-            'thrustForce': 1,
-            'rollForce': 1,
             'minimumLinearSpeed': 0.001,
             'minimumRotationalSpeed': 0.005,
             'constantThrustDrag': 0.02,
             'constantRollDrag': 0.04
         }
+  
+    # Key inputs
+    def thrustKeysPressed(self, key):
+        if key in {'w', 'a', 's', 'd'}:
+            player.thrust = [
+                ( int(key == 'w') - int(key == 's') ) * self.thrustConstants['thrustForce'],
+                ( int(key == 'd') - int(key == 'a') ) * self.thrustConstants['rollForce']
+            ]
+
+    def thrustKeysHeld(self, keyList):
+        setKeys = set(keyList)
+        if setKeys.intersection({'w', 'a', 's', 'd'}) != set(): # Non-empty intersection, so at least 1 is held
+            player.thrust = [
+                ( int('w' in setKeys) - int('s' in setKeys) ) * self.thrustConstants['thrustForce'],
+                ( int('d' in setKeys) - int('a' in setKeys) ) * self.thrustConstants['rollForce']
+            ]
+    
+    def thrustKeysReleased(self):
+        player.thrust = [0, 0]
+
+    def generalKeysPressed(self, app, key):
+        pass
+    
+    def generalKeysHeld(self, app, keyList):
+        app.scaleChangeDirection = int('up' in keyList) - int('down' in keyList)
+
+    def generalKeysReleased(self, app, key):
+        app.scaleChangeDirection = 0
+    
+    # Boost thrust
+    def getBoost(self):
+        return self.boostMeter
+
+    def stepBoost(self):
+        if self.thrust[0] != 0 and self.boostMeter > 0:
+            boostThrust = self.thrustConstants['thrustForce'] * self.thrustConstants['boostMult'] 
+            self.thrust[0] = sign(self.thrust[0]) * boostThrust
+            self.boostMeter -= 1
+        elif self.thrust[0] == 0 and self.boostMeter < self.boostMax:
+            self.boostMeter += self.boostRefillRate
+        print(self.boostMeter)
 
     # Physics 
     # Uses default method for takePhysicsStep
@@ -299,38 +372,17 @@ class Player(SmallBody):
             if abs(self.vel[2]) < self.constants['minimumRotationalSpeed']:
                 self.vel[2] = 0
     
+    
+    # Stepping:
+    def step(self, app):
+        self.stepBoost()
+        self.collide()
+        self.takePhysicsStep(app)
+
     # Rendering
     def draw(self, app):
         drawCircle(*renderCoords(app, self.pos), self.size * app.scale, fill = 'blue')
         drawStar(*renderCoords(app, self.pos), self.size * app.scale, 5, fill = 'white', rotateAngle = renderAngle(self.pos[2]))
-
-    # Control methods
-    def thrustKeysPressed(self, key):
-        if key in {'w', 'a', 's', 'd'}:
-            player.thrust = [
-                ( int(key == 'w') - int(key == 's') ) * self.constants['thrustForce'],
-                ( int(key == 'd') - int(key == 'a') ) * self.constants['rollForce']
-            ]
-
-    def thrustKeysHeld(self, keyList):
-        setKeys = set(keyList)
-        if setKeys.intersection({'w', 'a', 's', 'd'}) != set(): # Non-empty intersection, so at least 1 is held
-            player.thrust = [
-                ( int('w' in setKeys) - int('s' in setKeys) ) * self.constants['thrustForce'],
-                ( int('d' in setKeys) - int('a' in setKeys) ) * self.constants['rollForce']
-            ]
-    
-    def thrustKeysReleased(self):
-        player.thrust = [0, 0]
-
-    def generalKeysPressed(self, app, key):
-        pass
-    
-    def generalKeysHeld(self, app, keyList):
-        app.scaleChangeDirection = int('up' in keyList) - int('down' in keyList)
-
-    def generalKeysReleased(self, app, key):
-        app.scaleChangeDirection = 0
 
 class Fruit(SmallBody):
     def __init__(self, pos, vel, type, customSize = None, customMass = None):
@@ -378,13 +430,8 @@ class Fruit(SmallBody):
         self.name = thisFruitType['Name']
         self.size = thisFruitType['Size'] if customSize == None else customSize
         self.mass = thisFruitType['Mass'] if customMass == None else customMass
-        
-        
-
-
-
-
-# A big object that can move around in the world
+       
+# Planets: A big object that can move around in the world
 class Planet():
     Instances = []
     def __init__(self, pos, vel, mass):
@@ -392,6 +439,22 @@ class Planet():
         self.vel = vel
         self.mass = mass
         Planet.Instances.append(self)
+
+        self.orbiting = None
+    
+    def __repr__(self):
+        return f"Planet, default, at {self.pos} weighs {self.mass}"
+    
+    def setOrbitingBody(self, bodyToOrbit):
+        self.orbiting = bodyToOrbit
+    
+    def stepOrbit(self):
+        if self.orbiting != None:
+            pass
+
+    def step(self):
+        self.pos += self.vel
+        self.stepOrbit()
 
 class SpherePlanet(Planet):
     Instances = []
@@ -401,8 +464,6 @@ class SpherePlanet(Planet):
         # So this sphereplanet is ALSO contained in the list of general
         self.size = size
         self.color = color
-       
-
         self.collisionRadius = self.size
 
         SpherePlanet.Instances.append(self)
@@ -415,9 +476,6 @@ class SpherePlanet(Planet):
                 0 # Default angle
             )
         
-    def __repr__(self):
-        return "Planet"
-
     # Collision
     def setCollisionMesh(self, sizeChange):
         self.collisionRadius = self.size + sizeChange
@@ -426,12 +484,6 @@ class SpherePlanet(Planet):
         xComp = otherpos[0] - self.pos[0]
         yComp = otherpos[1] - self.pos[1]
         return vecUnit(xComp, yComp)
-
-    # Motion
-    def rotate(self, rotateAmount):
-        self.pos[2] += rotateAmount
-    def orbit(self, centerPos, orbitAmount):
-        pass
 
     # Rendering
     def draw(self, app):
@@ -476,24 +528,24 @@ class LinePlanet(Planet):
                 )
             )
         return result # Range of 4-length tuples, line coordinates
-    
+
     def printThisBody(self):
         print( self.getLinesFromPoints(self.getRealCoordinates()) )
     
     # Rendering
     def draw(self, app):
-        pass
+        for thisLine in self.getLinesFromPoints(self.getRealCoordinates()):
+            drawLine(*thisLine, fill = 'red', lineWidth = 2 * app.scale)
 
-# === GLOBALS + OBJECT GENERATION ===
 
-# WRANGLING OBJECTS
+# === EXTRACLASS FUNCTIONS ===
 
 # Master collision mesh generator, so I can pass in player class object
 def generateCollisionMeshes():
     for thisPlanet in SpherePlanet.Instances:
         thisPlanet.setCollisionMesh(player.size)
 
-# INSTANCING
+# === OBJECT INSTANCING ===
 
 player = Player([-30, 0, 0], [0, 0, 0], 30, 50)
 
@@ -502,11 +554,11 @@ player = Player([-30, 0, 0], [0, 0, 0], 30, 50)
 centerIndicator = Helperline((0, 0, 0), (0, 0, 0), 1, 'red')
 velocityIndicator = Helperline((0, 0, 0), (0, 0, 0), 2, 'yellow')
 
-greenPlanet = SpherePlanet((600, 200), (0, 0), 300, 1000, 'green')
+greenPlanet = SpherePlanet((600, 200), (0, 0), 300, 10000, 'green')
 greenHead = Helperball((500, 500), 30)
 
 Apple = SpherePlanet( (100, -100), (0, 0), 100, 200, 'red')
-Orange = SpherePlanet((300, -500), (50, 50), 250, 400, 'orange')
+Orange = SpherePlanet((300, -500), (50, 50), 250, 1000, 'orange')
 
 #Quadrangle = LinePlanet((-100, -100),(0, 0),100,[(-10, -10), (-10, 10), (10, 10), (10, -10)])
 
@@ -591,10 +643,16 @@ def stepScale(app):
 # STEPPING
 
 def onStep(app):
+    # Object stepping
     for body in SmallBody.Instances:
         body.step(app)
+    
+    for planet in Planet.Instances:
+        planet.step()
+    
+    # Rendering
     setRenderOrigin(app) # so it always centers
-    stepScale(app)
+    stepScale(app) # so key-holding scaling works
 
     
 # PLAYER INTERACTION
@@ -614,7 +672,6 @@ def onKeyRelease(app, key):
 # DRAWING
 
 def redrawAll(app): 
-    
     for objectClass in [Helperball, Helperline, SmallBody, Planet]:
         for instance in objectClass.Instances:
             instance.draw(app)
@@ -628,12 +685,11 @@ def redrawAll(app):
         playerCoords = renderCoords(app, player.pos)
         planetCoords = renderCoords(app, thisPlanet.pos)
         drawLine(*playerCoords, *planetCoords, fill = 'blue')
-    #greenPlanet.draw(app)
-    #greenPlanet.drawCollider(app)
-    #Apple.draw(app)
    
-    #player.draw(app)
     drawRenderOrigin(app)
+
+    if not app.debugPrint: 
+        return
 
     drawLabel(f"Thrust: {player.thrust}", 100, 30, align = 'left')
     xThrust = math.sin(math.radians(player.pos[2]))
@@ -663,6 +719,7 @@ def onAppStart(app):
     # Game state
     app.stepsPerSecond = 30
     app.bigG = 2
+    app.debugPrint = True
 
     for objectClass in [Helperball, Helperline, SmallBody, Planet]:
         print("How calling objects of", objectClass)
