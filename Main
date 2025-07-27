@@ -142,6 +142,12 @@ class Helperline():
     def draw(self, app):
         drawLine(*renderCoords(app, self.startPos), *renderCoords(app, self.endPos), lineWidth = self.thickness * app.scale, fill = self.color)
 
+# === SIMULATION CLASSES ===
+
+class Scale():
+    def imageSize(self, scale):
+        return 42
+
 # === MAIN CLASSES ===
 
 # SmallBodies: A small object that collides with planets
@@ -393,8 +399,11 @@ class Player(SmallBody):
 
     # Rendering
     def draw(self, app):
-        drawCircle(*renderCoords(app, self.pos), self.size * app.scale, fill = 'blue')
-        drawStar(*renderCoords(app, self.pos), self.size * app.scale, 5, fill = 'white', rotateAngle = renderAngle(self.pos[2]))
+        image = 'assets/player/player.png'
+        rawWidth, rawHeight = getImageSize(image)
+        myScaleFactor = 0.5
+        realWidth, realHeight = rawWidth * app.scale * myScaleFactor, rawHeight * app.scale * myScaleFactor
+        drawImage('assets/player/player.png', *renderCoords(app, self.pos), rotateAngle = renderAngle(self.pos), width = realWidth, height = realHeight, align = 'center')
 
 class Fruit(SmallBody):
     def __init__(self, pos, vel, type, customSize = None, customMass = None):
@@ -629,7 +638,7 @@ def renderCoords(app, posTuple):
 
 # Rotation handler for non-point objects (CMU graphics bodies, images)
 def renderAngle(rotationCoord): 
-    trueBodyAngle = rotationCoord[2] if isinstance(rotationCoord, tuple) else rotationCoord
+    trueBodyAngle = rotationCoord[2] if isinstance(rotationCoord, tuple) or isinstance(rotationCoord, list) else rotationCoord
     return trueBodyAngle - player.pos[2] 
 
 # SCALE MANAGEMENT AND CONTROL
