@@ -255,7 +255,7 @@ class SmallBody():
                     rollVelocity = vecDot(vXTangential, vYTangential, surfaceTangentX, surfaceTangentY) * friction
 
                     # Convert linear to angular by diving by radius
-                    rollConversionFactor = 1 / self.size
+                    rollConversionFactor = 10 / self.size # step count
                     
                     # Decreasing old angular velocity is a crack solution to the rolling-amplification issue I had a bit ago
                     oldRollCarryover = self.vel[2] * 0.95
@@ -266,7 +266,7 @@ class SmallBody():
                     self.vel[1] = newVYRadial + newVYTangential
                     self.vel[2] = newVTheta
 
-                break # I have decided that you'll never crash into two at once in one step. Saves us some time
+                break # I have decided that you'll never crash into two planets at once in one step. Saves us some processing time, perhaps!
 
     def collideWithLines(self):
         pass
