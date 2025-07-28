@@ -65,11 +65,6 @@
 
 # Bottom of screen aligns to biggest gravity influence
 
-# Dream planets
-#   Black hole core, with central black hole
-#       Check desmos for point math. Would require hella culling
-#   Derelict station, a no-grav line planet
-#   
 
 # === IMPORTS ===
 
@@ -123,7 +118,7 @@ class Helperball():
         Helperball.Instances.append(self)
     
     def draw(self, app):
-        drawCircle(*renderCoords(app, self.centerPos), self.size * app.scale, fill = self.color)
+        drawCircle(*render.getCoords(self.centerPos), render.getScale(self.size), fill = self.color)
 
 class Helperline():
     Instances = []
@@ -140,13 +135,9 @@ class Helperline():
         self.endPos = endPos
     
     def draw(self, app):
-        drawLine(*renderCoords(app, self.startPos), *renderCoords(app, self.endPos), lineWidth = self.thickness * app.scale, fill = self.color)
+        drawLine(*render.getCoords(self.startPos), *render.getCoords(self.endPos), lineWidth = render.getScale(self.thickness), fill = self.color)
 
 # === SIMULATION CLASSES ===
-
-class Scale():
-    def imageSize(self, scale):
-        return 42
 
 # === MAIN CLASSES ===
 
@@ -169,19 +160,21 @@ class SmallBody():
         fNetTheta = self.calcNetTorque()
 
         # Acceleration, velocity, position
-        ddx = fNetx / player.mass
-        ddy = fNety / player.mass
-        ddTheta = fNetTheta / player.mass
+        ddx = fNetx / self.mass
+        ddy = fNety / self.mass
+        ddTheta = fNetTheta / self.mass
 
         self.vel[0] += ddx
         self.vel[1] += ddy
         self.vel[2] += ddTheta
+
+        self.snapVelocitiesToZero()
         
         self.pos[0] += self.vel[0]
         self.pos[1] += self.vel[1]
         self.pos[2] += self.vel[2]
 
-    def calcNetForce(self):
+    def calcNetForce(self, app):
         fNetx, fNety = 0, 0
 
         fGx, fGy = self.getAllPlanetGravity(app)
@@ -193,8 +186,6 @@ class SmallBody():
     def getAllPlanetGravity(self, app):
         fGx, fGy = 0, 0
         for thisPlanet in Planet.Instances:
-
-
             # Get distance vector to planet
             dxPlanet, dyPlanet = thisPlanet.pos[0] - self.pos[0], thisPlanet.pos[1] - self.pos[1]
             # Crunch newtonian gravity: gmM / r^2
@@ -205,8 +196,11 @@ class SmallBody():
             fGy += fGThisPlanet * yHat
         return fGx, fGy
 
-    def calcNetTorque(self):
+    def calcNetTorque(self): # Placeholder for player
         return 0
+
+    def snapVelocitiesToZero(self): # Placeholder for player
+        pass
 
     # Collision
     def collide(self):
@@ -282,8 +276,8 @@ class SmallBody():
     
     # Rendering
     def draw(self, app):
-        drawCircle(*renderCoords(app, self.pos), self.size * app.scale, fill = 'black')
-        drawStar(*renderCoords(app, self.pos), self.size * app.scale, 5, fill = 'black', rotateAngle = renderAngle(self.pos[2]))
+        drawCircle(*render.getCoords(self.pos), render.getScale(self.size), fill = 'black')
+        drawStar(*render.getCoords(self.pos), render.getScale(self.size), 5, fill = 'white', rotateAngle = render.getAngle(self.pos[2]))
 
     # Step
     def step(self, app):
@@ -308,7 +302,7 @@ class Player(SmallBody):
             'minimumLinearSpeed': 0.001,
             'minimumRotationalSpeed': 0.005,
             'constantThrustDrag': 0.02,
-            'constantRollDrag': 0.04
+            'constantRollDrag': 0.1
         }
   
     # Key inputs
@@ -334,10 +328,10 @@ class Player(SmallBody):
         pass
     
     def generalKeysHeld(self, app, keyList):
-        app.scaleChangeDirection = int('up' in keyList) - int('down' in keyList)
+        render.scaleChangeDirection = int('up' in keyList) - int('down' in keyList)
 
     def generalKeysReleased(self, app, key):
-        app.scaleChangeDirection = 0
+        render.scaleChangeDirection = 0
     
     # Boost thrust
     def getBoost(self):
@@ -402,8 +396,8 @@ class Player(SmallBody):
         image = 'assets/player/player.png'
         rawWidth, rawHeight = getImageSize(image)
         myScaleFactor = 0.5
-        realWidth, realHeight = rawWidth * app.scale * myScaleFactor, rawHeight * app.scale * myScaleFactor
-        drawImage('assets/player/player.png', *renderCoords(app, self.pos), rotateAngle = renderAngle(self.pos), width = realWidth, height = realHeight, align = 'center')
+        realWidth, realHeight = render.getScale(rawWidth * myScaleFactor), render.getScale(rawHeight * myScaleFactor)
+        drawImage('assets/player/player.png', *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), width = realWidth, height = realHeight, align = 'center')
 
 class Fruit(SmallBody):
     def __init__(self, pos, vel, type, customSize = None, customMass = None):
@@ -451,7 +445,9 @@ class Fruit(SmallBody):
         self.name = thisFruitType['Name']
         self.size = thisFruitType['Size'] if customSize == None else customSize
         self.mass = thisFruitType['Mass'] if customMass == None else customMass
-       
+
+player = Player([-30, 0, 0], [0, 0, 0], 30, 50)
+
 # Planets: A big object that can move around in the world
 class Planet():
     Instances = []
@@ -485,7 +481,7 @@ class SpherePlanet(Planet):
         # So this sphereplanet is ALSO contained in the list of general
         self.size = size
         self.color = color
-        self.collisionRadius = self.size
+        self.collisionRadius = self.size + player.size
 
         SpherePlanet.Instances.append(self)
 
@@ -497,10 +493,6 @@ class SpherePlanet(Planet):
                 0 # Default angle
             )
         
-    # Collision
-    def setCollisionMesh(self, sizeChange):
-        self.collisionRadius = self.size + sizeChange
-
     def getNormalVectorTo(self, otherpos):
         xComp = otherpos[0] - self.pos[0]
         yComp = otherpos[1] - self.pos[1]
@@ -508,15 +500,15 @@ class SpherePlanet(Planet):
 
     # Rendering
     def draw(self, app):
-        drawCircle(*renderCoords(app, self.pos), 
-                    self.size * app.scale, 
-                    rotateAngle = renderAngle(self.pos),
+        drawCircle(*render.getCoords(self.pos), 
+                    render.getScale(self.size), 
+                    rotateAngle = render.getAngle(self.pos),
                     fill = self.color)
     
     def drawCollider(self, app):
-        drawCircle(*renderCoords(app, self.pos), 
-                   self.collisionRadius * app.scale, 
-                   rotateAngle = renderAngle(self.pos),
+        drawCircle(*render.getCoords(self.pos), 
+                   render.getScale(self.collisionRadius), 
+                   rotateAngle = render.getAngle(self.pos),
                    fill = None, border = 'red', dashes = True)
 
 class LinePlanet(Planet):
@@ -527,7 +519,7 @@ class LinePlanet(Planet):
         LinePlanet.Instances.append(self)
 
     # Mesh Helping
-    def getRealCoordinates(self):
+    def getWorldspaceCoordinates(self):
         return [
             (thisPoint[0] + self.pos[0], 
              thisPoint[1] + self.pos[1]) 
@@ -551,26 +543,16 @@ class LinePlanet(Planet):
         return result # Range of 4-length tuples, line coordinates
 
     def printThisBody(self):
-        print( self.getLinesFromPoints(self.getRealCoordinates()) )
+        print( self.getLinesFromPoints(self.getWorldspaceCoordinates()) )
     
     # Rendering
     def draw(self, app):
-        for thisLine in self.getLinesFromPoints(self.getRealCoordinates()):
-            drawLine(*thisLine, fill = 'red', lineWidth = 2 * app.scale)
-
-
-# === EXTRACLASS FUNCTIONS ===
-
-# Master collision mesh generator, so I can pass in player class object
-def generateCollisionMeshes():
-    for thisPlanet in SpherePlanet.Instances:
-        thisPlanet.setCollisionMesh(player.size)
+        for thisLine in self.getLinesFromPoints(self.getWorldspaceCoordinates()):
+            drawLine(*thisLine, fill = 'red', lineWidth = render.getScale(2))
 
 # === OBJECT INSTANCING ===
 
-player = Player([-30, 0, 0], [0, 0, 0], 30, 50)
-
-#appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
+appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
 
 centerIndicator = Helperline((0, 0, 0), (0, 0, 0), 1, 'red')
 velocityIndicator = Helperline((0, 0, 0), (0, 0, 0), 2, 'yellow')
@@ -585,83 +567,95 @@ Orange = SpherePlanet((300, -500), (50, 50), 250, 1000, 'orange')
 
 # === RENDERING ===
 
-# SCREEN ORIGIN
-
-# Placing the origin at the screen center
-def setRenderOrigin(app, posX = 0.5, posY = 0.5):
-    app.renderOrigin = (app.width * posX, app.height * posY)
-
-def drawRenderOrigin(app):
-    drawCircle(*app.renderOrigin, 3 * app.scale, fill = 'black')
-
-# HELPERS FOR MASTER RENDERING
-
-# Translation helper
-def renderTranslate(x, y, cx, cy):
-    return x - cx, y - cy
-
-# Rotation helper
-def renderRotate(x, y, theta):
-    theta = math.radians(theta)
-    rotatedX = math.cos(theta) * x - math.sin(theta) * y
-    rotatedY = math.sin(theta) * x + math.cos(theta) * y
-    return rotatedX, rotatedY
-
-# Scale helper
-def renderScale(app, x, y):
-    return x * app.scale, y * app.scale
-
-# Turning to screen coordinate helper
-def renderScreenshift(app, x, y):
-    return app.renderOrigin[0] + x, app.renderOrigin[1] - y
-
-# MASTER RENDERING
-
-# Master renderer, spits out coordinates shifted by player's position, rotation, screen scale, and screen position
-def renderCoords(app, posTuple):
-    xReal, yReal = posTuple[0], posTuple[1]
-    if len(posTuple) == 3: # I want it to accept both coord and coord + rotation
-        thetaReal = posTuple[2]
-    else:
-        thetaReal = None
-
-    xCam, yCam = player.pos[0], player.pos[1]
-    thetaCam = player.pos[2]
+class Render():
+    # FUNDAMENTALS
+    def __init__(self, app):
+        self.renderOrigin = (app.width * 0.5, app.height * 0.5)
+        self.scale = 1
+        self.scaleChangeDirection = 0
+        self.setRenderOrigin(app)
     
-    # Shift the coordinates in realspace to put the camera at origin, scale all as well
-    tx, ty = renderTranslate(xReal, yReal, xCam, yCam)
-    rx, ry = renderRotate(tx, ty, thetaCam)
-    finalx, finaly = renderScale(app, rx, ry)
+    def step(self, app):
+        self.setRenderOrigin(app)
+        self.stepScale()
+
+    def draw(self, app):
+        self.internal_drawRenderOrigin(app)
     
-    # Shift to render scheme
-    return renderScreenshift(app, finalx, finaly)
+    # SCREEN ORIGIN
+    def setRenderOrigin(self, app, posX = 0.5, posY = 0.5):
+        self.renderOrigin = (app.width * posX, app.height * posY)
 
-# Rotation handler for non-point objects (CMU graphics bodies, images)
-def renderAngle(rotationCoord): 
-    trueBodyAngle = rotationCoord[2] if isinstance(rotationCoord, tuple) or isinstance(rotationCoord, list) else rotationCoord
-    return trueBodyAngle - player.pos[2] 
+    def internal_drawRenderOrigin(self, app):
+        drawCircle(*self.renderOrigin, 3 * self.scale, fill = 'black')
 
-# SCALE MANAGEMENT AND CONTROL
+    # MASTER RENDERING
+    # Master renderer, spits out coordinates shifted by player's position, rotation, screen scale, and screen position
+    def getCoords(self, posTuple):
+        xReal, yReal = posTuple[0], posTuple[1]
+        if len(posTuple) == 3: # I want it to accept both coord and coord + rotation
+            thetaReal = posTuple[2]
+        else:
+            thetaReal = None
 
-# Initialize screen scale
-def setScaleStart(app):
-    app.scale = 1
-    app.scaleChangeDirection = 0
+        xCam, yCam = player.pos[0], player.pos[1]
+        thetaCam = player.pos[2]
+        
+        # Shift the coordinates in realspace to put the camera at origin, scale all as well
+        tx, ty = self.internal_renderTranslate(xReal, yReal, xCam, yCam)
+        rx, ry = self.internal_renderRotate(tx, ty, thetaCam)
+        finalx, finaly = self.internal_renderScale(rx, ry)
+        
+        # Shift to render scheme
+        return self.internal_renderScreenshift(finalx, finaly)
 
-# Changes screen scale based on current state of app.scaleChangeDirection
-def stepScale(app):
-    scaleMax = 5
-    scaleMin = 0.1
-    # Short circuit if it's even relevant, then ensure within bounds
-    if (app.scaleChangeDirection != 0 and
-        (app.scaleChangeDirection == 1 and app.scale < scaleMax) or 
-        (app.scaleChangeDirection == -1 and app.scale > scaleMin)):
-            scaleFactor = 1 + (0.1 * app.scaleChangeDirection)
-            app.scale *= scaleFactor
+    # Rotation handler for non-point objects (CMU graphics bodies, images)
+    def getAngle(self, rotationCoord): 
+        trueBodyAngle = rotationCoord[2] if isinstance(rotationCoord, tuple) or isinstance(rotationCoord, list) else rotationCoord
+        return trueBodyAngle - player.pos[2]
+    
+    # Scale handler for non-point objects
+    def getScale(self, normalScale):
+        return normalScale * self.scale
+
+    # MASTER RENDER HELPERS 
+    # Translation helper
+    def internal_renderTranslate(self, x, y, cx, cy):
+        return x - cx, y - cy
+
+    # Rotation helper
+    def internal_renderRotate(self, x, y, theta):
+        theta = math.radians(theta)
+        rotatedX = math.cos(theta) * x - math.sin(theta) * y
+        rotatedY = math.sin(theta) * x + math.cos(theta) * y
+        return rotatedX, rotatedY
+
+    # Scale helper
+    def internal_renderScale(self, x, y):
+        return x * self.scale, y * self.scale
+
+    # Turning to screen coordinate helper
+    def internal_renderScreenshift(self, x, y):
+        return self.renderOrigin[0] + x, self.renderOrigin[1] - y
+    
+    
+    # SCALE
+    # Changes screen scale based on current state of self.scaleChangeDirection
+    def stepScale(self):
+        scaleMax = 5
+        scaleMin = 0.1
+        # Short circuit if it's even relevant, then ensure within bounds
+        if (self.scaleChangeDirection != 0 and
+            (self.scaleChangeDirection == 1 and self.scale < scaleMax) or 
+            (self.scaleChangeDirection == -1 and self.scale > scaleMin)):
+                scaleFactor = 1 + (0.1 * self.scaleChangeDirection)
+                self.scale *= scaleFactor
+
+render = Render(app)
 
 # === EVENT HANDLING ===
 
-# STEPPING
+# STEP
 
 def onStep(app):
     # Object stepping
@@ -671,12 +665,12 @@ def onStep(app):
     for planet in Planet.Instances:
         planet.step()
     
-    # Rendering
-    setRenderOrigin(app) # so it always centers
-    stepScale(app) # so key-holding scaling works
-
+    render.step(app)
     
-# PLAYER INTERACTION
+    # Rendering
+    render.step(app)
+
+# KEY INPUT
 
 def onKeyPress(app, key):
     player.thrustKeysPressed(key)
@@ -698,16 +692,15 @@ def redrawAll(app):
             instance.draw(app)
 
     # Velocity line
-    #drawLine(*renderCoords(app, player.pos), *renderCoords(app, greenPlanet.pos))
-    drawLine(*renderCoords(app, player.pos), *renderCoords(app, vecAdd(player.pos, (player.vel[0] * 20, player.vel[1] * 20))), fill = 'red')
+    drawLine(*render.getCoords(player.pos), *render.getCoords(vecAdd(player.pos, (player.vel[0] * 20, player.vel[1] * 20))), fill = 'red')
 
     # Planet centerlines
     for thisPlanet in Planet.Instances:
-        playerCoords = renderCoords(app, player.pos)
-        planetCoords = renderCoords(app, thisPlanet.pos)
+        playerCoords = render.getCoords(player.pos)
+        planetCoords = render.getCoords(thisPlanet.pos)
         drawLine(*playerCoords, *planetCoords, fill = 'blue')
    
-    drawRenderOrigin(app)
+    render.setRenderOrigin(app)
 
     if not app.debugPrint: 
         return
@@ -723,7 +716,7 @@ def redrawAll(app):
 
     drawLabel(f"Pos: {player.pos}", 100, 90, align = 'left')
 
-    drawLabel(f"Scale: {app.scale}", 100, 130, align = 'left')
+    drawLabel(f"Scale: {render.scale}", 100, 130, align = 'left')
 
     
 
@@ -733,10 +726,7 @@ def debugGamut(app):
     app.isTheGravityOn = False
 
 def onAppStart(app):
-    setRenderOrigin(app)
-    setScaleStart(app)
-
-    generateCollisionMeshes()
+    #generateCollisionMeshes()
     # Game state
     app.stepsPerSecond = 30
     app.bigG = 2
