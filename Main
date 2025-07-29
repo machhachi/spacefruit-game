@@ -6,13 +6,43 @@
 # Andrew ID: awerth2
 # Recitation: U
 
-# Cumulative Hours = 40
+# Cumulative Hours = about 51, but who's counting?
+
+# <=> Credits, Disclaimers, and Inspiration <=>
+
+# Explicit crediting: I did not create the line-segment intersection I used
+# Find it here at https://www.geeksforgeeks.org/dsa/check-if-two-given-line-segments-intersect/
+# It serves in a raycasting algorithm, to check the collisions between generated rays and polygon segments in LinePlanet -> getExpandedCollisionData
+
+# Thank you to Michael Taylor for the class, the OH, the time, the thought, and the conversation.
+# As of 1am on 7/29/25, your original suggestion for raycast polygon collisions is fully implemented, much to my relief.
+# This had better make it in the history books.
+
+# <=> Cool Things that You should Look At <=>
+
+# Check out my MyMath and Vector classes! It's made for some very elegant coding, especially the latter, though some early areas (gravity) predate use of vector methods.
+
+# PLEASE be as impressed by LinePlanets as I am. The collision logic for them was astoundingly hard.
+#   - Note that each time a Smallbody runs collision checking on a line planet, it passes in its own radius.
+#   - That's because each Line Planet is prepared to generate a collision mesh LIVE, custom such that it'll interact with the centerpoint of the body calling upon it.
+#   - The subsequent actual collision checking is fun too: it implements my built-by-hand(almost, see disclaimer) raycasting,
+#       and even generates circular colliders at the vertices to handle corners.
+
+# Scroll down to the Render class as well!
+#   Rendering was essentially the first major tool I designed, and it now lets me navigate my simulation world like a dream:
+#   - All 'world' coordinates are totally fixed,
+#   - The player 'camera' can move, rotate, and zoom in/out at will,
+#   - And, as mathematics intended, positive Y correlates to upwards on the screen.
+
 
 # <=> Desires <=>
 
 # Real current projects
-# - Line planets
-# - General gravity
+# ACHIEVED LINE PLANETS
+# ACHIEVED DIAGETIC LINE PLANET COLLISIONS
+# ACHIEVED GENERAL GRAVITY
+
+# Orbit paths
 
 # General minor bugs
 #   Rolling on smallbody sphere planet collisions never really hits zero
@@ -25,23 +55,10 @@
 # - Test collision on moving planets?
 # - add planet velocity on collision
 
-# - Small body collision on line planets
-# - Small body self-collision, ideally implementing momentum logic to move both self and other body
-
 # - Small body contains an elasticity variable, to be 
 #   - A) customized per smallbody instance (i.e. fruit)
 #   - B) varied based on player orientation (0 elasticity on landing gear side)
 
-
-# Future envisioned code simplifications
-# - Master (planet) collider tool
-
-#   A polyname method that is called by smallbody in reference to both sphere and line planets. 
-#       Returns, based on player coordinates, the depth inside and surface normal of the relevant surface the smallbody is colliding.
-#       This is just part of the circle for sphere planets, and the relevant line for line planets.
-#   Allows collision to be globalized, as once that information is acquired, bouncing + skidding + rolling are identical betwee sphere and line
-
-# - Line planets get a circular detection radius to even bother testing lines for intersection
 
 # Entity culling for rendering at certain distance(all things have pos attribute)
 # Perhaps entity culling for gravity as well
@@ -249,17 +266,11 @@ class SmallBody():
         for thisPlanet in LinePlanet.Instances:
             # Don't bother calculating unless we're in the relevant range to begin
             if vector.distance(self.pos, thisPlanet.pos) <= thisPlanet.getCollisionCheckRadius():
-                # Use dedicated lineplanet collision method (Don't be fooled, dramatically more hard than the sphere one :( )
-                collisionResult = thisPlanet.isCollidingWith(self.pos)
+                # Use dedicated lineplanet collision method, which takes a size, as to generate a specific collision mesh that interacts with this smallbody's radius
+                collisionResult = thisPlanet.getExpandedCollisionData(self.pos, self.size)
                 if collisionResult != False:
-                    segment = collisionResult # Function spits out nearest segment
-
-                    # Rotate the (vectorized)segment to get its normal vector
-                    normal = vector.unit(vector.cw(vector.vectorize(segment)))
-                    # Via triangle angle formula (A = 1/2 bh), get h = 2 * area / base
-                    depth = 2 * vector.heronAreaByPoints(segment[0], segment[1], self.pos) / vector.len(vector.vectorize(segment))
-
-                    self.evaluatePlanetCollision(normal, -depth)
+                    normal, trueDepth = collisionResult
+                    self.evaluatePlanetCollision(normal, trueDepth)
 
 
     def collideWithSmallbodies(self):
@@ -491,7 +502,7 @@ class Fruit(SmallBody):
         self.size = thisFruitType['Size'] if customSize == None else customSize
         self.mass = thisFruitType['Mass'] if customMass == None else customMass
 
-player = Player([-30, 0, 0], [0, 0, 0], 30, 50)
+player = Player([-30, -1000, 0], [0, 1, 0], 30, 50)
 
 # Planets: A big object that can move around in the world
 class Planet():
@@ -501,22 +512,12 @@ class Planet():
         self.vel = vel
         self.mass = mass
         Planet.Instances.append(self)
-
-        self.orbiting = None
     
     def __repr__(self):
         return f"Planet, default, at {self.pos} weighs {self.mass}"
-    
-    def setOrbitingBody(self, bodyToOrbit):
-        self.orbiting = bodyToOrbit
-    
-    def stepOrbit(self):
-        if self.orbiting != None:
-            pass
 
     def step(self):
-        self.pos += self.vel
-        self.stepOrbit()
+        pass # As per (ideal) implementation of orbit paths, planets do not handle their own motion. They are perfectly parameterized, not simulated
 
 class SpherePlanet(Planet):
     Instances = []
@@ -613,15 +614,62 @@ class LinePlanet(Planet):
     def getCollisionCheckRadius(self):
         return self.collisionCheckRadius
     
-    # Check interiority (sadge) (extremely complex and frankly annoying)
-    def isCollidingWith(self, testPoint):
-        # Returns false if point is not inside
-        # If is, returns points of the determined nearest segment
+    # Generate, live, expanded meshes depending on provided distance change (radius of colliding smallbody, eventually)
+    def generateExpandedLinearMesh(self, d):
+        originalLines = self.getWorldMeshLines()
+
+        expandedSegmentMesh = []
+        for segment in originalLines:
+            lineVector = vector.vectorize(segment)
+            normal = vector.unit(vector.cw(lineVector))
+            shift = vector.scale(normal, d) # We move along normal vector by d
+
+            newStartPoint = vector.add(segment[0], shift) # The shift is a delta, so this translates the segment points by shift (yay!)
+            newEndPoint = vector.add(segment[1], shift)
+            expandedSegmentMesh.append((newStartPoint, newEndPoint))
+        return expandedSegmentMesh
+    
+    def generateExpandedCornerMesh(self, d):
+        originalLines = self.getWorldMeshLines()
+
+        def isVertexConvex(vec1, vec2):
+            # Assuming these two vectors form a vertex and their points are wound ccw,
+            # we check whether this vertex is convex by seeing if vector 2 is to the left of vector 1 (curves inward)
+            # We can do this by rotating vector 1 ccw, and taking its dot prod (alignment) with vector 2. Thus, they align on the left side of vector 1 and don't on the right
+            return vector.dot(vector.ccw(vec1), vec2) > 0 # Returns no on colinearity, but I will not do colinear meshes
+
+        convexVertices = []
+        for pointIndex in range(len(originalLines)):
+            firstSegment = originalLines[pointIndex - 1] # If the first pair is (-1) and (0), we've successfully wound without exceeding loop indices
+            secondSegment = originalLines[pointIndex]
+
+            assert( firstSegment[1] == secondSegment[0] ) # Just gonna leave this here for debugging purposes. These should all be wound such that they have common points
+            thisVertex = secondSegment[0] # equivalently, firstSegment[1]
+            if isVertexConvex(vector.vectorize(firstSegment), vector.vectorize(secondSegment)):
+                convexVertices.append(thisVertex)
+        return convexVertices # Since we know d the entire time, we crunch the numbers on circle intersection outside of this function. Theoretically, it's distance-agnostic.
+    
+    # Check interiority with internal new mesh generation
+    def getExpandedCollisionData(self, testPoint, expandRadius):
+
+        # === # === # === # === #
+        # LINEAR MESH COLLIDER
+        # === # === # === # === #
+        
+        # Welcome to hell. This single function, and its connections upstairs in collideWithLines, made for easily ten straight hours of development on Monday, July 28th, 2025.
+        # But in all fairness, this is sick as fuck.
+        # Circle collisions, of ANY radius, with an arbitrary polygon? Gorgeous.
+
+        # === # === # === # === #
+        # PART 1: COLLIDING WITH LINEAR SEGMENTS OF THE EXPOSED MESH
+        # === # === # === # === #
+
+        expandedMesh = self.generateExpandedLinearMesh(expandRadius)
 
         # To dodge any edge cases, we calc interiority by majority vote
         interiorityConsensus = 0
 
-        # Raycast segment generation
+        # Raycast segment generation ( 8 cardinal directions seems to suffice )
         raycastSegments = []
         unitDirections = [(1, 0), (0, 1), (-1, 0), (0, -1), # Eight cardinal directions
                           (0.7, 0.7), (-0.7, 0.7), (-0.7, -0.7), (0.7, -0.7)] # In idgaf terms, sqrt(2)/2 = 0.7
@@ -636,7 +684,7 @@ class LinePlanet(Planet):
         # Collision counting
         for ray in raycastSegments:
             intersectionCount = 0
-            for segment in self.getWorldMeshLines():
+            for segment in expandedMesh:
                 doesIntersect = self.segmentsIntersect(ray, segment)
                 if doesIntersect != False:
                     intersectionCount += 1
@@ -644,21 +692,41 @@ class LinePlanet(Planet):
             hasOddIntersections = intersectionCount % 2 == 1
             interiorityConsensus += 1 if hasOddIntersections else -1
         
-        # Return false if not interior, otherwise calculate closest segment
-        if interiorityConsensus <= 0:
-            return False
-        else:
+        # We've collided with lines.
+        if interiorityConsensus > 0:
             # Return the closest segment as determined by smallest area via Heron's Formula
             minArea = None
             closestSegment = None
-            for segment in self.getWorldMeshLines():
+            for segment in expandedMesh:
                 area = vector.heronAreaByPoints(*segment, testPoint)
                 if minArea == None or area < minArea:
                     closestSegment = segment
                     minArea = area
+            
+            def segmentToCollisionData(segment):
+                # Rotate the (vectorized)segment to get its normal vector
+                normal = vector.unit(vector.cw(vector.vectorize(segment)))
+                # Via triangle angle formula (A = 1/2 bh), get h = 2 * area / base
+                absDepth = 2 * vector.heronAreaByPoints(segment[0], segment[1], testPoint) / vector.len(vector.vectorize(segment))
+                return normal, -absDepth # depth should be negative
 
-            return closestSegment
+            return segmentToCollisionData(closestSegment)
+        
+        # === # === # === # === #
+        # PART 2: COLLIDING WITH ROUNDED VERTICES OF THE EXPANDED MESH
+        # === # === # === # === #
 
+        expansionVertices = self.generateExpandedCornerMesh(expandRadius)
+        for testVertex in expansionVertices:
+            if vector.distance(testVertex, testPoint) <= expandRadius: # Colliding with this circle:
+                normal = vector.unit(vector.subtract(testPoint, testVertex))
+                depth = vector.distance(testVertex, testPoint) - expandRadius # should be negative
+                return normal, depth
+        
+        # Goddamn it. It really puts things into perspective when you can spend ten hours developing a line collider and six lines rewriting a circle one
+
+        return False
+            
     def segmentsIntersect(self, line1, line2):
         # Full credit to https://www.geeksforgeeks.org/dsa/check-if-two-given-line-segments-intersect/
         # It's a nice one
