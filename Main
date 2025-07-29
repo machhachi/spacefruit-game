@@ -38,27 +38,22 @@
 # <=> Desires <=>
 
 # Real current projects
+# ACHIEVED GENERAL GRAVITY
 # ACHIEVED LINE PLANETS
 # ACHIEVED DIAGETIC LINE PLANET COLLISIONS
-# ACHIEVED GENERAL GRAVITY
+# ACHIEVED MOVING PLANET COLLISIONS
+# Parameterized planet paths and the OrbitPath class that defines them
+# Fruit spawning, pickup, inventory
+# Text particles?
 
 # Orbit paths
 
-# General minor bugs
-#   Rolling on smallbody sphere planet collisions never really hits zero
-#       Define some threshold below which it snaps to zero
-#       Perhaps do for linera velocity as well
-#       And then add back planet velocity at some point, after all the above
 
 # Physics engine level developments
-
-# - Test collision on moving planets?
-# - add planet velocity on collision
 
 # - Small body contains an elasticity variable, to be 
 #   - A) customized per smallbody instance (i.e. fruit)
 #   - B) varied based on player orientation (0 elasticity on landing gear side)
-
 
 # Entity culling for rendering at certain distance(all things have pos attribute)
 # Perhaps entity culling for gravity as well
@@ -148,8 +143,36 @@ class Vector(): # A package of vector functions
     def heronAreaByPoints(self, pointP, pointQ, pointR):
         lineA, lineB, lineC = vector.distance(pointP, pointQ), vector.distance(pointQ, pointR), vector.distance(pointR, pointP)
         return mymath.heronArea(lineA, lineB, lineC)
+    
+    def add2to3(self, v3, v2):
+        return(v3[0] + v2[0], v3[1] + v2[1], v3[2])
 
 vector = Vector()
+
+class Motion(): # Specific handlers for my motion (mostly conversion from tuples to lists)
+    def __init__(self):
+        pass
+
+    # Mutating component addition
+    def plusEq(self, thing1, thing2, ignoreThirdComponent = False):
+        # componentwise list modification. Designed to function whether or not second list / tuple has a third component (but always expects first to have one)
+        thing1[0] += thing2[0]
+        thing1[1] += thing2[1]
+        if not ignoreThirdComponent and len(thing2) == 3:
+            thing1[2] += thing2[2]
+
+    # Non-mutating component addition
+    def getSum(self, thing1, thing2, ignoreThirdComponent = False):
+        # Componentwise list modification
+        compX = thing1[0] + thing2[0]
+        compY = thing1[1] + thing2[1]
+        compR = thing1[2] + thing2[2] if ( not ignoreThirdComponent and len(thing2) == 3 ) else thing1[2]
+        return [compX, compY, compR]
+
+    def invert(self, thing1):
+        return [comp * -1 for comp in thing1]
+
+motion = Motion()
 
 # === CLASSES: DEBUG DRAWN OBJECTS ===
 
@@ -199,6 +222,13 @@ class SmallBody():
 
         SmallBody.Instances.append(self)
 
+        self.constants = {
+            'minimumLinearSpeed': 0,
+            'minimumRotationalSpeed': 0,
+            'constantThrustDrag': 0,
+            'constantRollDrag': 0
+        }
+
     # Physics 
     def takePhysicsStep(self, app):
         # Force
@@ -214,6 +244,7 @@ class SmallBody():
         self.vel[1] += ddy
         self.vel[2] += ddTheta
 
+        self.applyDrag()
         self.snapVelocitiesToZero()
         
         self.pos[0] += self.vel[0]
@@ -245,8 +276,18 @@ class SmallBody():
     def calcNetTorque(self): # Placeholder for player
         return 0
 
-    def snapVelocitiesToZero(self): # Placeholder for player
-        pass
+    def applyDrag(self):
+        self.vel[0] -= self.vel[0] * self.constants['constantThrustDrag'] / self.mass
+        self.vel[1] -= self.vel[1] * self.constants['constantThrustDrag'] / self.mass
+        self.vel[2] -= self.vel[2] * self.constants['constantRollDrag'] / self.mass
+
+    def snapVelocitiesToZero(self):
+        if abs(self.vel[0]) < self.constants['minimumLinearSpeed']:
+            self.vel[0] = 0
+        if abs(self.vel[1]) < self.constants['minimumLinearSpeed']:
+            self.vel[1] = 0
+        if abs(self.vel[2]) < self.constants['minimumRotationalSpeed']:
+            self.vel[2] = 0
 
     # Collision
     def collide(self):
@@ -260,7 +301,8 @@ class SmallBody():
             if vector.distance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
                 normal = thisPlanet.getNormalVectorTo(self.pos) # unit normal vector
                 depth = vector.distance(self.pos, thisPlanet.pos) - (self.size + thisPlanet.size)
-                self.evaluatePlanetCollision(normal, depth)
+                self.evaluatePlanetCollision(thisPlanet, normal, depth)
+                #self.addPlanetMotion(thisPlanet)
                 
     def collideWithLines(self):
         for thisPlanet in LinePlanet.Instances:
@@ -270,15 +312,28 @@ class SmallBody():
                 collisionResult = thisPlanet.getExpandedCollisionData(self.pos, self.size)
                 if collisionResult != False:
                     normal, trueDepth = collisionResult
-                    self.evaluatePlanetCollision(normal, trueDepth)
-
+                    self.evaluatePlanetCollision(thisPlanet, normal, trueDepth)
+                    #self.addPlanetMotion(thisPlanet)
 
     def collideWithSmallbodies(self):
         pass  
     
-    def evaluatePlanetCollision(self, normal, depth):
+    def evaluatePlanetCollision(self, collidingPlanet, normal, depth):
+        assert(isinstance(collidingPlanet, Planet))
+
+        def stripPlanetMotion(velocity, thisPlanet):
+            planetPos, planetVel = thisPlanet.getPosVelData()
+            return motion.getSum(velocity, motion.invert(planetVel))
+
+        def injectPlanetMotion(velocity, thisPlanet):
+            planetPos, planetVel = thisPlanet.getPosVelData()
+            return motion.getSum(velocity, planetVel)
+        
+        relativeVelocity = stripPlanetMotion(self.vel, collidingPlanet)
+
         normalX, normalY = normal[0], normal[1]
-        vRadial = vector.dot(self.vel, normal) # magnitude velocity in direction of planet center
+
+        vRadial = vector.dot(relativeVelocity, normal) # magnitude velocity in direction of planet center
         vXRadial, vYRadial = normalX * vRadial, normalY * vRadial # components thereof
 
         # Evaluate collision if we're moving inwards towards planet
@@ -296,8 +351,8 @@ class SmallBody():
 
             # Velocity adjustment
             #   First, extract radial and tangential velocity
-            vXTangential = self.vel[0] - vXRadial
-            vYTangential = self.vel[1] - vYRadial
+            vXTangential = relativeVelocity[0] - vXRadial
+            vYTangential = relativeVelocity[1] - vYRadial
 
             # Radial component: "bounce" speed. Output should be 0x original (inelastic) up to -1x(elastic)
             elasticity = 0.5
@@ -322,13 +377,20 @@ class SmallBody():
             rollConversionFactor = 10 / self.size # step count
             
             # Decreasing old angular velocity is a crack solution to the rolling-amplification issue I had a bit ago
-            oldRollCarryover = self.vel[2] * 0.95
+            oldRollCarryover = relativeVelocity[2] * 0.95
             newVTheta = oldRollCarryover + rollVelocity * rollConversionFactor
 
             # Recombine 
-            self.vel[0] = newVXRadial + newVXTangential
-            self.vel[1] = newVYRadial + newVYTangential
-            self.vel[2] = newVTheta
+
+            recombinedVel = [
+                newVXRadial + newVXTangential,
+                newVYRadial + newVYTangential,
+                newVTheta
+            ]
+
+            self.vel = injectPlanetMotion(recombinedVel, collidingPlanet)
+
+    
 
     # Rendering
     def draw(self, app):
@@ -402,10 +464,8 @@ class Player(SmallBody):
             self.boostMeter += self.boostRefillRate
         #print(self.boostMeter)
 
-    # Physics 
-    # Uses default method for takePhysicsStep
-        
-    def calcNetForce(self, app):
+    # Modified physics methods
+    def calcNetForce(self, app): # Includes player thrust
         # Force
         fNetx, fNety = 0, 0 
 
@@ -419,18 +479,14 @@ class Player(SmallBody):
         fNetx += fGx
         fNety += fGy
 
-        # Drag
-        fNetx -= self.vel[0] * self.constants['constantThrustDrag']
-        fNety -= self.vel[1] * self.constants['constantThrustDrag']
         return fNetx, fNety
 
-    def calcNetTorque(self):
+    def calcNetTorque(self): # Includes player thrust
         fNetTheta = 0
         fNetTheta += self.thrust[1]
-        fNetTheta -= self.vel[2] * self.constants['constantRollDrag']
         return fNetTheta
-
-    def snapVelocitiesToZero(self):
+    
+    def snapVelocitiesToZero(self): # Only invokes if player not thrusting
         if self.thrust[0] == 0:
             if abs(self.vel[0]) < self.constants['minimumLinearSpeed']:
                 self.vel[0] = 0
@@ -439,8 +495,7 @@ class Player(SmallBody):
         if self.thrust[1] == 0:
             if abs(self.vel[2]) < self.constants['minimumRotationalSpeed']:
                 self.vel[2] = 0
-    
-    
+
     # Stepping:
     def step(self, app):
         self.stepBoost()
@@ -514,10 +569,14 @@ class Planet():
         Planet.Instances.append(self)
     
     def __repr__(self):
-        return f"Planet, default, at {self.pos} weighs {self.mass}"
-
+        return f"Planet, default (s={self.pos}, v={self.vel}, m={self.mass})"
+    
     def step(self):
+        motion.plusEq(self.pos, self.vel)
         pass # As per (ideal) implementation of orbit paths, planets do not handle their own motion. They are perfectly parameterized, not simulated
+
+    def getPosVelData(self):
+        return self.pos, self.vel
 
 class SpherePlanet(Planet):
     Instances = []
@@ -533,11 +592,14 @@ class SpherePlanet(Planet):
 
         # Set pos angle to default if not defined
         if len(self.pos) < 3:
-            self.pos = (
+            self.pos = [
                 self.pos[0],
                 self.pos[1],
                 0 # Default angle
-            )
+            ]
+
+    def __repr__(self):
+        return f"Planet, sphere (s={self.pos}, v={self.vel}, m={self.mass}, r={self.size})"
         
     def getNormalVectorTo(self, otherpos):
         xComp = otherpos[0] - self.pos[0]
@@ -568,6 +630,9 @@ class LinePlanet(Planet):
         self.setCollisionCheckRadius()
 
         LinePlanet.Instances.append(self)
+
+    def __repr__(self):
+        return f"Planet, line (s={self.pos}, v={self.vel}, m={self.mass})"
 
     # Mesh Helping
     def getWorldspaceMesh(self):
@@ -632,12 +697,6 @@ class LinePlanet(Planet):
     def generateExpandedCornerMesh(self, d):
         originalLines = self.getWorldMeshLines()
 
-        def isVertexConvex(vec1, vec2):
-            # Assuming these two vectors form a vertex and their points are wound ccw,
-            # we check whether this vertex is convex by seeing if vector 2 is to the left of vector 1 (curves inward)
-            # We can do this by rotating vector 1 ccw, and taking its dot prod (alignment) with vector 2. Thus, they align on the left side of vector 1 and don't on the right
-            return vector.dot(vector.ccw(vec1), vec2) > 0 # Returns no on colinearity, but I will not do colinear meshes
-
         convexVertices = []
         for pointIndex in range(len(originalLines)):
             firstSegment = originalLines[pointIndex - 1] # If the first pair is (-1) and (0), we've successfully wound without exceeding loop indices
@@ -645,8 +704,8 @@ class LinePlanet(Planet):
 
             assert( firstSegment[1] == secondSegment[0] ) # Just gonna leave this here for debugging purposes. These should all be wound such that they have common points
             thisVertex = secondSegment[0] # equivalently, firstSegment[1]
-            if isVertexConvex(vector.vectorize(firstSegment), vector.vectorize(secondSegment)):
-                convexVertices.append(thisVertex)
+            
+            convexVertices.append(thisVertex) # It actually improves sim to have circles in the concavities too. No distinction made between convex and concave
         return convexVertices # Since we know d the entire time, we crunch the numbers on circle intersection outside of this function. Theoretically, it's distance-agnostic.
     
     # Check interiority with internal new mesh generation
@@ -661,7 +720,19 @@ class LinePlanet(Planet):
         # Circle collisions, of ANY radius, with an arbitrary polygon? Gorgeous.
 
         # === # === # === # === #
-        # PART 1: COLLIDING WITH LINEAR SEGMENTS OF THE EXPOSED MESH
+        # PART 1: COLLIDING WITH ROUNDED VERTICES OF THE EXPANDED MESH
+        # === # === # === # === #
+
+        expansionVertices = self.generateExpandedCornerMesh(expandRadius)
+
+        for testVertex in expansionVertices:
+            if vector.distance(testVertex, testPoint) <= expandRadius: # Colliding with this circle:
+                normal = vector.unit(vector.subtract(testPoint, testVertex))
+                depth = vector.distance(testVertex, testPoint) - expandRadius # should be negative
+                return normal, depth
+
+        # === # === # === # === #
+        # PART 2: COLLIDING WITH LINEAR SEGMENTS OF THE EXPOSED MESH
         # === # === # === # === #
 
         expandedMesh = self.generateExpandedLinearMesh(expandRadius)
@@ -711,17 +782,6 @@ class LinePlanet(Planet):
                 return normal, -absDepth # depth should be negative
 
             return segmentToCollisionData(closestSegment)
-        
-        # === # === # === # === #
-        # PART 2: COLLIDING WITH ROUNDED VERTICES OF THE EXPANDED MESH
-        # === # === # === # === #
-
-        expansionVertices = self.generateExpandedCornerMesh(expandRadius)
-        for testVertex in expansionVertices:
-            if vector.distance(testVertex, testPoint) <= expandRadius: # Colliding with this circle:
-                normal = vector.unit(vector.subtract(testPoint, testVertex))
-                depth = vector.distance(testVertex, testPoint) - expandRadius # should be negative
-                return normal, depth
         
         # Goddamn it. It really puts things into perspective when you can spend ten hours developing a line collider and six lines rewriting a circle one
 
@@ -783,15 +843,20 @@ class LinePlanet(Planet):
 
 # === GAME OBJECT INSTANCING ===
 
+# ALL (CORE) POSITION & VELOCITY VECTORS ARE ARE LISTS NOW
+# WE LOVE MUTABILITY
+# frankly there should be an additional kind of data type, with a set number of slots but is perfectly able to change data within them
+
 appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
 
-greenPlanet = SpherePlanet((600, 200), (0, 0), 300, 10000, 'green')
-greenHead = Helperball((500, 500), 30)
+greenPlanet = SpherePlanet([600, 200], [0, 0], 300, 1000, 'green')
+greenHead = Helperball([500, 500], 30)
 
-Apple = SpherePlanet( (100, -100), (0, 0), 100, 200, 'red')
-Orange = SpherePlanet((300, -500), (50, 50), 250, 1000, 'orange')
+Apple = SpherePlanet( [100, -100], [0, 0], 100, 200, 'red')
+Orange = SpherePlanet([300, -500], [10, 10], 250, 5000, 'orange')
 
-Quadrangle = LinePlanet((-300, -500), (0, 0), 100, [(-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
+# Polygon points are not stored in lists, they remain tuples. These describe relative positions to the centerpoint, and as such, do not change.
+Quadrangle = LinePlanet([-300, -500], [0, 0], 1000, [(0, 100), (-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
 
 # === CLASSES: RENDERING ===
 
