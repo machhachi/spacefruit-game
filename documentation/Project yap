@@ -4,9 +4,6 @@
 
 
 # === TO DO ===
-# Implement gravitation
-#   Don't do between all bodies, figure out classes so that some give and some recieve
-# 
 # Implement Collision
 # The hardest work the ship / fruit end wants to do (for now the only planet-colliders) is know If It's Colliding.
 # Then, it wants to be given a collision return direction. That is literally all.

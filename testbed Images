@@ -1,0 +1,118 @@
+from cmu_graphics import *
+
+# Start Screen Demo Tool
+
+
+#=====#=====#=====#=====#=====#=====#=====#=====#
+# Global
+#=====#=====#=====#=====#=====#=====#=====#=====#
+
+def distance(x1, y1, x2, y2):
+    return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+
+def onAppStart(app):
+    app.stepsPerSecond = 30
+    app.url = 'player.png'
+
+#=====#=====#=====#=====#=====#=====#=====#=====#
+# Start Screen
+#=====#=====#=====#=====#=====#=====#=====#=====#
+
+def start_onScreenActivate(app):
+    pass
+
+def start_redrawAll(app):
+    drawRect(0, 0, 400, 400, fill = 'red')
+    drawLabel('This shit is getting started', 200, 190)
+    drawLabel('Press [space] to start!', 200, 210)
+
+def start_onKeyPress(app, key):
+    if key == 'space':
+        setActiveScreen('game')
+
+#=====#=====#=====#=====#=====#=====#=====#=====#
+# Game Screen
+#=====#=====#=====#=====#=====#=====#=====#=====#
+
+class Image():
+    def __init__(self, url, scaleFactor = 1):
+        self.url = url
+        rawWidth, rawHeight = getImageSize(self.url)
+        self.realWidth = rawWidth * scaleFactor
+        self.realHeight = rawHeight * scaleFactor
+    
+    def draw(self, app, x, y):
+        drawImage(self.url, x, y, align = 'center', width = self.realWidth, height = self.realHeight)
+
+    def getSize(self):
+        return self.realWidth, self.realHeight
+
+player = Image('assets/player/player.png', 0.5)
+
+def game_onScreenActivate(app):
+    app.ballX = 200
+    app.ballY = 200
+    app.ballR = 30
+    app.dx = randrange(-20, 20)
+    app.dy = randrange(-20, 20)
+    app.mouseX = 0
+    app.mouseY = 0
+
+def game_onMouseMove(app, mouseX, mouseY):
+    app.mouseX = mouseX
+    app.mouseY = mouseY
+
+def game_redrawAll(app):
+    player.draw(app, app.mouseX, app.mouseY)
+
+    drawCircle(app.ballX, app.ballY, app.ballR, fill = 'red')
+    drawLabel('evil', app.ballX, app.ballY)
+
+    
+def game_onStep(app):
+    if app.ballX - app.ballR < 0:
+        app.dx *= -1
+    elif app.ballX + app.ballR > app.width:
+        app.dx *= -1
+    
+    if app.ballY - app.ballR < 0:
+        app.dy *= -1
+    elif app.ballY + app.ballR > app.height:
+        app.dy *= -1
+
+    app.ballX += app.dx
+    app.ballY += app.dy
+
+    if distance(app.mouseX, app.mouseY, app.ballX, app.ballY) <= app.ballR:
+        print("Collided!!!!")
+        setActiveScreen('death')
+
+#=====#=====#=====#=====#=====#=====#=====#=====#
+# Death Screen
+#=====#=====#=====#=====#=====#=====#=====#=====#
+
+def death_onScreenActive(app):
+    print("You've entered the DEAD ZONE !!!")
+
+def death_redrawAll(app):
+    drawRect(0, 0, 400, 400, fill = 'black')
+    drawLabel('Death', 200, 190, fill = 'white')
+    drawLabel('Return with [r]', 200, 210, fill = 'white')
+
+def death_onKeyPress(app, key):
+    if key == 'r':
+        setActiveScreen('start')
+
+def death_onStep(app):
+    pass # This is necessary because an event must occur for redrawAll to be passed. How stupid is that
+
+#=====#=====#=====#=====#=====#=====#=====#=====#
+# Main
+#=====#=====#=====#=====#=====#=====#=====#=====#
+
+def main():
+    runAppWithScreens(initialScreen='start')
+
+main()
+
+
