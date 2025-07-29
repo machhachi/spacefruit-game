@@ -6,7 +6,7 @@
 # Andrew ID: awerth2
 # Recitation: U
 
-# Cumulative Hours = 31
+# Cumulative Hours = 40
 
 # <=> Desires <=>
 
@@ -71,41 +71,70 @@
 from cmu_graphics import *
 import math
 
-# === MATH HELPERS ===
+# === CLASSES: FUNCTION LIBRARIES ===
 
-# Arithmetic
-def sign(x):
-    return 1 if x >= 0 else -1
+class MyMath():
+    def __init__(self):
+        pass
 
-# Geometry
-def hypotenuse(a, b):
-    return (a ** 2 + b ** 2) ** 0.5
+    def sign(self, x):
+        return 1 if x >= 0 else -1
+    
+    def hypotenuse(self, a, b):
+        return (a ** 2 + b ** 2) ** 0.5
+    
+    def distance(self, x1, y1, x2, y2):
+        return self.hypotenuse(x2 - x1, y2 - y1)
+    
+    def heronArea(self, a, b, c):
+        s = (a + b + c) / 2
+        return ( ( s * (s - a) * (s - b) * (s - c) ) ** 0.5 )
+    
+mymath = MyMath()
 
-def distance(x1, y1, x2, y2):
-    return( (y2 - y1) ** 2 + (x2 - x1) ** 2 ) ** 0.5
+class Vector(): # A package of vector functions
+    def __init__(self):
+        pass
 
-# 2D Vectors
-def vecUnit(x, y): # Normalizes to vector of magnitude 1
-    return x / hypotenuse(x,y), y / hypotenuse(x, y)
+    def vectorize(self, line): # Line (coords) to vector
+        return (line[1][0] - line[0][0], line[1][1] - line[0][1])
 
-def vecDot(x1, y1, x2, y2): # Componentwise dot product
-    return x1 * x2 + y1 * y2 # turns out it's not very special
+    def distance(self, v1, v2):
+        dx = v2[0] - v1[0]
+        dy = v2[1] - v1[1]
+        return mymath.hypotenuse(dx, dy)
+    
+    def len(self, v):
+        return mymath.hypotenuse(v[0], v[1])
+    
+    def add(self, v1, v2):
+        return (v1[0] + v2[0], v1[1] + v2[1])
+    
+    def subtract(self, v1, v2):
+        return (v1[0] - v2[0], v1[1] - v2[1])
+    
+    def scale(self, v, k):
+        return (v[0] * k, v[1] * k)
+    
+    def unit(self, v):
+        return( v[0] / self.len(v), v[1] / self.len(v) )
+    
+    def dot(self, v1, v2):
+        return v1[0] * v2[0] + v1[1] * v2[1] # startlingly simple
+    
+    def cw(self, v):
+        return (v[1], -v[0])
+    
+    def ccw(self, v):
+        return (-v[1], v[0])
+    
+    def heronAreaByPoints(self, pointP, pointQ, pointR):
+        lineA, lineB, lineC = vector.distance(pointP, pointQ), vector.distance(pointQ, pointR), vector.distance(pointR, pointP)
+        return mymath.heronArea(lineA, lineB, lineC)
 
-def vecTheta(x1, y1, x2, y2): # Angle between lines, a la dot product
-    # Crunches the two definitions of dot product,
-    #   (sum of component products) = |a||b|cos(theta)
-    # , evaluating for theta
-    return math.acos( vecDot(x1, y1, x2, y2) / 
-                    ( hypotenuse(x1, y1) * hypotenuse(x2, y2) ) )
+vector = Vector()
 
-# Planet tools
-def centerDistance(pos1, pos2):
-    return distance(pos1[0], pos1[1], pos2[0], pos2[1])
-
-def vecAdd(v1, v2):
-    return( v1[0] + v2[0], v1[1] + v2[1] )
-
-# === DEBUG CLASSES ===
+# === CLASSES: DEBUG DRAWN OBJECTS ===
 
 # A drawn object
 class Helperball():
@@ -137,9 +166,9 @@ class Helperline():
     def draw(self, app):
         drawLine(*render.getCoords(self.startPos), *render.getCoords(self.endPos), lineWidth = render.getScale(self.thickness), fill = self.color)
 
-# === SIMULATION CLASSES ===
+# === CLASSES: SIMULATION SUPPORT ===
 
-# === MAIN CLASSES ===
+# === CLASSES: GAME OBJECTS ===
 
 # SmallBodies: A small object that collides with planets
 class SmallBody():
@@ -190,8 +219,8 @@ class SmallBody():
             dxPlanet, dyPlanet = thisPlanet.pos[0] - self.pos[0], thisPlanet.pos[1] - self.pos[1]
             # Crunch newtonian gravity: gmM / r^2
             fGThisPlanet = ( app.bigG * self.mass * thisPlanet.mass ) / (dxPlanet ** 2 + dyPlanet ** 2)
-
-            xHat, yHat = vecUnit(dxPlanet, dyPlanet)
+    
+            xHat, yHat = vector.unit((dxPlanet, dyPlanet))
             fGx += fGThisPlanet * xHat
             fGy += fGThisPlanet * yHat
         return fGx, fGy
@@ -210,70 +239,86 @@ class SmallBody():
 
     def collideWithSpheres(self):
         for thisPlanet in SpherePlanet.Instances:
-
             # Test if we are within the collision circle, thus, colliding with the body
-            if centerDistance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
-
-                normalX, normalY = thisPlanet.getNormalVectorTo(self.pos) # unit normal vector
-                vRadial = vecDot(self.vel[0], self.vel[1], normalX, normalY) # magnitude velocity in direction of planet center
-                vXRadial, vYRadial = normalX * vRadial, normalY * vRadial # components thereof
-
-                if vecDot(normalX, normalY, vXRadial, vYRadial) < 0: # Negative -> misaligned -> moving inwards towards planet
-                    # (Note: if you were to check position interiority and not velocity, then you might repeat this collision)
-                    # (That would be rubber-banding, where you get insane collisions because one phys step isn't enough to un-collide you)
-                    # (This way, any collision will only have 1 velocity change before the object stops going inwards)
-
-                    # Position adjustment
-                    # 'Altitude', inward-surface-to-surface dist, is negative since we are within collision bounds
-                    # So subtract it out of position to push smallbody to the exact bound
-                    altitude = centerDistance(self.pos, thisPlanet.pos) - (self.size + thisPlanet.size)
-                    self.pos[0] -= altitude * normalX
-                    self.pos[1] -= altitude * normalY
-
-                    # Velocity adjustment
-                    # First, extract radial and tangential velocity
-                    vXTangential = self.vel[0] - vXRadial
-                    vYTangential = self.vel[1] - vYRadial
-
-                    # Radial component: "bounce" speed. Output should be 0x original (inelastic) up to -1x(elastic)
-                    elasticity = 0.5
-                    newVXRadial = -vXRadial * elasticity
-                    newVYRadial = -vYRadial * elasticity
-
-                    # Tangential component: "skid" speed. Multiply by some decreasing fraction, and convert some to rolling.
-                    friction = 0.7
-                    newVXTangential = vXTangential * (1 - friction)
-                    newVYTangential = vYTangential * (1 - friction)
-
-                    # Roll component: rolling. Whatever was lost in tangential, we assume it goes about fully into rolling.
-                    #   To get the direction: we need to know if we're moving CW or CCW about the planet 
-                    #   If you rotate the normal vector (points outwards) 90 degrees CW, that now points in the CW-about-planet direction
-                    #   And we can use dot product to see if we're aligned or unaligned with that
-
-                    # Vector transformation for rotating CW 90 degrees
-                    surfaceTangentX, surfaceTangentY = normalY, -normalX
-                    rollVelocity = vecDot(vXTangential, vYTangential, surfaceTangentX, surfaceTangentY) * friction
-
-                    # Convert linear to angular by diving by radius
-                    rollConversionFactor = 10 / self.size # step count
-                    
-                    # Decreasing old angular velocity is a crack solution to the rolling-amplification issue I had a bit ago
-                    oldRollCarryover = self.vel[2] * 0.95
-                    newVTheta = oldRollCarryover + rollVelocity * rollConversionFactor
-
-                    # Recombine 
-                    self.vel[0] = newVXRadial + newVXTangential
-                    self.vel[1] = newVYRadial + newVYTangential
-                    self.vel[2] = newVTheta
-
-                break # I have decided that you'll never crash into two planets at once in one step. Saves us some processing time, perhaps!
-
+            if vector.distance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
+                normal = thisPlanet.getNormalVectorTo(self.pos) # unit normal vector
+                depth = vector.distance(self.pos, thisPlanet.pos) - (self.size + thisPlanet.size)
+                self.evaluatePlanetCollision(normal, depth)
+                
     def collideWithLines(self):
-        pass
-    
+        for thisPlanet in LinePlanet.Instances:
+            # Don't bother calculating unless we're in the relevant range to begin
+            if vector.distance(self.pos, thisPlanet.pos) <= thisPlanet.getCollisionCheckRadius():
+                # Use dedicated lineplanet collision method (Don't be fooled, dramatically more hard than the sphere one :( )
+                collisionResult = thisPlanet.isCollidingWith(self.pos)
+                if collisionResult != False:
+                    segment = collisionResult # Function spits out nearest segment
+
+                    # Rotate the (vectorized)segment to get its normal vector
+                    normal = vector.unit(vector.cw(vector.vectorize(segment)))
+                    # Via triangle angle formula (A = 1/2 bh), get h = 2 * area / base
+                    depth = 2 * vector.heronAreaByPoints(segment[0], segment[1], self.pos) / vector.len(vector.vectorize(segment))
+
+                    self.evaluatePlanetCollision(normal, -depth)
+
+
     def collideWithSmallbodies(self):
         pass  
     
+    def evaluatePlanetCollision(self, normal, depth):
+        normalX, normalY = normal[0], normal[1]
+        vRadial = vector.dot(self.vel, normal) # magnitude velocity in direction of planet center
+        vXRadial, vYRadial = normalX * vRadial, normalY * vRadial # components thereof
+
+        # Evaluate collision if we're moving inwards towards planet
+
+        if vector.dot(normal, (vXRadial, vYRadial)) < 0: # Negative -> misaligned -> moving inwards towards planet
+            # (Note: if you were to check position interiority and not velocity, then you might repeat this collision)
+            # (That would be rubber-banding, where you get insane collisions because one phys step isn't enough to un-collide you)
+            # (This way, any collision will only have 1 velocity change before the object stops going inwards)
+
+            # Position adjustment
+            #   Depth, or Altitude when positive, (inward-surface-to-surface dist), is negative since we are within collision bounds
+            #   So subtract it out of position to push smallbody to the exact bound
+            self.pos[0] -= depth * normalX
+            self.pos[1] -= depth * normalY
+
+            # Velocity adjustment
+            #   First, extract radial and tangential velocity
+            vXTangential = self.vel[0] - vXRadial
+            vYTangential = self.vel[1] - vYRadial
+
+            # Radial component: "bounce" speed. Output should be 0x original (inelastic) up to -1x(elastic)
+            elasticity = 0.5
+            newVXRadial = -vXRadial * elasticity
+            newVYRadial = -vYRadial * elasticity
+
+            # Tangential component: "skid" speed. Multiply by some decreasing fraction, and convert some to rolling.
+            friction = 0.7
+            newVXTangential = vXTangential * (1 - friction)
+            newVYTangential = vYTangential * (1 - friction)
+
+            # Roll component: rolling. Whatever was lost in tangential, we assume it goes about fully into rolling.
+            #   To get the direction: we need to know if we're moving CW or CCW about the planet 
+            #   If you rotate the normal vector (points outwards) 90 degrees CW, that now points in the CW-about-planet direction
+            #   And we can use dot product to see if we're aligned or unaligned with that
+
+            # Vector transformation for rotating CW 90 degrees
+            surfaceTangentX, surfaceTangentY = normalY, -normalX
+            rollVelocity = vector.dot((vXTangential, vYTangential), (surfaceTangentX, surfaceTangentY)) * friction
+
+            # Convert linear to angular by diving by radius
+            rollConversionFactor = 10 / self.size # step count
+            
+            # Decreasing old angular velocity is a crack solution to the rolling-amplification issue I had a bit ago
+            oldRollCarryover = self.vel[2] * 0.95
+            newVTheta = oldRollCarryover + rollVelocity * rollConversionFactor
+
+            # Recombine 
+            self.vel[0] = newVXRadial + newVXTangential
+            self.vel[1] = newVYRadial + newVYTangential
+            self.vel[2] = newVTheta
+
     # Rendering
     def draw(self, app):
         drawCircle(*render.getCoords(self.pos), render.getScale(self.size), fill = 'black')
@@ -340,11 +385,11 @@ class Player(SmallBody):
     def stepBoost(self):
         if self.thrust[0] != 0 and self.boostMeter > 0:
             boostThrust = self.thrustConstants['thrustForce'] * self.thrustConstants['boostMult'] 
-            self.thrust[0] = sign(self.thrust[0]) * boostThrust
+            self.thrust[0] = mymath.sign(self.thrust[0]) * boostThrust
             self.boostMeter -= 1
         elif self.thrust[0] == 0 and self.boostMeter < self.boostMax:
             self.boostMeter += self.boostRefillRate
-        print(self.boostMeter)
+        #print(self.boostMeter)
 
     # Physics 
     # Uses default method for takePhysicsStep
@@ -496,7 +541,7 @@ class SpherePlanet(Planet):
     def getNormalVectorTo(self, otherpos):
         xComp = otherpos[0] - self.pos[0]
         yComp = otherpos[1] - self.pos[1]
-        return vecUnit(xComp, yComp)
+        return vector.unit((xComp, yComp))
 
     # Rendering
     def draw(self, app):
@@ -515,11 +560,16 @@ class LinePlanet(Planet):
     Instances = []
     def __init__(self, centerPos, vel, mass, mesh):
         super().__init__(centerPos, vel, mass)
+        # Wind the mesh counterclockwise
+        # All hell will break loose if this mesh isn't wound counterclockwise
+        # I swear to god
         self.mesh = mesh
+        self.setCollisionCheckRadius()
+
         LinePlanet.Instances.append(self)
 
     # Mesh Helping
-    def getWorldspaceCoordinates(self):
+    def getWorldspaceMesh(self):
         return [
             (thisPoint[0] + self.pos[0], 
              thisPoint[1] + self.pos[1]) 
@@ -527,35 +577,145 @@ class LinePlanet(Planet):
         ]
     
     def getLinesFromPoints(self, points):
-        # Takes list of size-2 tuples, makes list of size-4
+        # Takes list of size-2 tuples, makes list of size-2 with nested size-2 tuples
         result = []
         for i in range(len(points)):
             # BEGINS by winding last to first
             # then proceeds up the list
             result.append(
                 (
-                    points[i-1][0],
-                    points[i-1][1],
-                    points[i][0],
-                    points[i][1]
+                    (points[i-1][0], points[i-1][1]),
+                    (points[i][0], points[i][1])
                 )
             )
-        return result # Range of 4-length tuples, line coordinates
+        return result # List of lines, each a 2-length tuple, containing 2 points, each 2-length tuples
 
-    def printThisBody(self):
-        print( self.getLinesFromPoints(self.getWorldspaceCoordinates()) )
+    def getWorldMeshLines(self):
+        return self.getLinesFromPoints(self.getWorldspaceMesh())
     
+    # Collision
+
+    # Calculate and save collision radius
+    def setCollisionCheckRadius(self):
+        furthestPointDistance = 0
+        furthestPoint = None
+        for relativePoint in self.mesh:
+            # Get radial distance from defined center
+            currentDistance = vector.len(relativePoint)
+            
+            # Set to first, or to furthest away
+            if furthestPoint == None or currentDistance > furthestPointDistance:
+                furthestPoint = relativePoint
+                furthestPointDistance = currentDistance
+        # We got the furthest point
+        self.collisionCheckRadius = furthestPointDistance
+
+    def getCollisionCheckRadius(self):
+        return self.collisionCheckRadius
+    
+    # Check interiority (sadge) (extremely complex and frankly annoying)
+    def isCollidingWith(self, testPoint):
+        # Returns false if point is not inside
+        # If is, returns points of the determined nearest segment
+
+        # To dodge any edge cases, we calc interiority by majority vote
+        interiorityConsensus = 0
+
+        # Raycast segment generation
+        raycastSegments = []
+        unitDirections = [(1, 0), (0, 1), (-1, 0), (0, -1), # Eight cardinal directions
+                          (0.7, 0.7), (-0.7, 0.7), (-0.7, -0.7), (0.7, -0.7)] # In idgaf terms, sqrt(2)/2 = 0.7
+        maxRayLength = self.getCollisionCheckRadius() * 2 # Collision *diameter* means we are guaranteed to cross the entire circle, thus the entire mesh
+        rayStart = testPoint
+        for rayIndex in range(8):
+            # Each endpoint is the respective cardinal unit direction scaled by the max possible radius we'd need to check
+            # and of course it needs to be made relative to start, hence vector.add()
+            rayEnd = vector.add(rayStart, vector.scale(unitDirections[rayIndex], maxRayLength))
+            raycastSegments.append((rayStart, rayEnd))
+        
+        # Collision counting
+        for ray in raycastSegments:
+            intersectionCount = 0
+            for segment in self.getWorldMeshLines():
+                doesIntersect = self.segmentsIntersect(ray, segment)
+                if doesIntersect != False:
+                    intersectionCount += 1
+                    # Any business about getting the closest intersection
+            hasOddIntersections = intersectionCount % 2 == 1
+            interiorityConsensus += 1 if hasOddIntersections else -1
+        
+        # Return false if not interior, otherwise calculate closest segment
+        if interiorityConsensus <= 0:
+            return False
+        else:
+            # Return the closest segment as determined by smallest area via Heron's Formula
+            minArea = None
+            closestSegment = None
+            for segment in self.getWorldMeshLines():
+                area = vector.heronAreaByPoints(*segment, testPoint)
+                if minArea == None or area < minArea:
+                    closestSegment = segment
+                    minArea = area
+
+            return closestSegment
+
+    def segmentsIntersect(self, line1, line2):
+        # Full credit to https://www.geeksforgeeks.org/dsa/check-if-two-given-line-segments-intersect/
+        # It's a nice one
+
+        def onSegment(p, q, r):
+            return ( q[0] <= max(p[0], r[0]) and q[0] >= min(p[0], r[0]) and
+                     q[1] <= max(p[1], r[1]) and q[1] >= min(p[1], r[1]))
+        
+        def winding(p, q, r):
+            val = ( (q[1] - p[1]) * (r[0] - q[0]) -
+                    (q[0] - p[0]) * (r[1] - q[1]) )
+
+            # collinear
+            if val == 0:
+                return 0
+            # 1 for clockwise, 2 for counterclockwise
+            return 1 if val > 0 else 2
+
+        # Calculate four windings of subsets of the points (a segment and one end of the other)
+        o1 = winding(line1[0], line1[1], line2[0])
+        o2 = winding(line1[0], line1[1], line2[1])
+        o3 = winding(line2[0], line2[1], line1[0])
+        o4 = winding(line2[0], line2[1], line1[1])
+
+        # general case
+        if o1 != o2 and o3 != o4:
+            return True
+        
+        # special cases
+        # p1, q1 and p2 are collinear and p2 lies on segment p1q1
+        if o1 == 0 and onSegment(line1[0], line2[0], line1[1]):
+            return True
+
+        # p1, q1 and q2 are collinear and q2 lies on segment p1q1
+        if o2 == 0 and onSegment(line1[0], line2[1], line1[1]):
+            return True
+
+        # p2, q2 and p1 are collinear and p1 lies on segment p2q2
+        if o3 == 0 and onSegment(line2[0], line1[0], line2[1]):
+            return True
+
+        # p2, q2 and q1 are collinear and q1 lies on segment p2q2 
+        if o4 == 0 and onSegment(line2[0], line1[1], line2[1]):
+            return True
+        
+        return False
+
     # Rendering
     def draw(self, app):
-        for thisLine in self.getLinesFromPoints(self.getWorldspaceCoordinates()):
-            drawLine(*thisLine, fill = 'red', lineWidth = render.getScale(2))
+        for thisLine in self.getLinesFromPoints(self.getWorldspaceMesh()):
+            lineStart = render.getCoords(thisLine[0])
+            lineEnd = render.getCoords(thisLine[1])
+            drawLine(*lineStart, *lineEnd, fill = 'red', lineWidth = render.getScale(2))
 
-# === OBJECT INSTANCING ===
+# === GAME OBJECT INSTANCING ===
 
 appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
-
-centerIndicator = Helperline((0, 0, 0), (0, 0, 0), 1, 'red')
-velocityIndicator = Helperline((0, 0, 0), (0, 0, 0), 2, 'yellow')
 
 greenPlanet = SpherePlanet((600, 200), (0, 0), 300, 10000, 'green')
 greenHead = Helperball((500, 500), 30)
@@ -563,9 +723,9 @@ greenHead = Helperball((500, 500), 30)
 Apple = SpherePlanet( (100, -100), (0, 0), 100, 200, 'red')
 Orange = SpherePlanet((300, -500), (50, 50), 250, 1000, 'orange')
 
-#Quadrangle = LinePlanet((-100, -100),(0, 0),100,[(-10, -10), (-10, 10), (10, 10), (10, -10)])
+Quadrangle = LinePlanet((-300, -500), (0, 0), 100, [(-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
 
-# === RENDERING ===
+# === CLASSES: RENDERING ===
 
 class Render():
     # FUNDAMENTALS
@@ -658,15 +818,17 @@ render = Render(app)
 # STEP
 
 def onStep(app):
+    if not app.paused:
+        takeStep(app)
+
+def takeStep(app):
     # Object stepping
     for body in SmallBody.Instances:
         body.step(app)
     
     for planet in Planet.Instances:
         planet.step()
-    
-    render.step(app)
-    
+
     # Rendering
     render.step(app)
 
@@ -675,6 +837,12 @@ def onStep(app):
 def onKeyPress(app, key):
     player.thrustKeysPressed(key)
     player.generalKeysPressed(app, key)
+
+    if key == 'p':
+        app.paused = not app.paused
+    if app.paused and key == 'o':
+        takeStep(app)
+
 
 def onKeyHold(app, key):
     player.thrustKeysHeld(key)
@@ -687,23 +855,29 @@ def onKeyRelease(app, key):
 # DRAWING
 
 def redrawAll(app): 
-    for objectClass in [Helperball, Helperline, SmallBody, Planet]:
+    render.setRenderOrigin(app)
+
+    # Game objects
+    for objectClass in [SmallBody, Planet]:
         for instance in objectClass.Instances:
             instance.draw(app)
 
+    if not app.debugPrint: # Threshold beyond which all is debug material
+        return
+    
+    # Debug objects
+    for objectClass in [Helperball, Helperline]:
+        for instance in objectClass.Instances:
+            instance.draw(app)
+    
     # Velocity line
-    drawLine(*render.getCoords(player.pos), *render.getCoords(vecAdd(player.pos, (player.vel[0] * 20, player.vel[1] * 20))), fill = 'red')
+    drawLine(*render.getCoords(player.pos), *render.getCoords(vector.add(player.pos, (player.vel[0] * 20, player.vel[1] * 20))), fill = 'red')
 
     # Planet centerlines
     for thisPlanet in Planet.Instances:
         playerCoords = render.getCoords(player.pos)
         planetCoords = render.getCoords(thisPlanet.pos)
         drawLine(*playerCoords, *planetCoords, fill = 'blue')
-   
-    render.setRenderOrigin(app)
-
-    if not app.debugPrint: 
-        return
 
     drawLabel(f"Thrust: {player.thrust}", 100, 30, align = 'left')
     xThrust = math.sin(math.radians(player.pos[2]))
@@ -711,7 +885,7 @@ def redrawAll(app):
     drawLabel(f"Angle Components: {xThrust}, {yThrust}", 100, 110, align = 'left')
 
     drawLabel(f"Speed: {player.vel}", 100, 50, align = 'left')
-    trueSpeed = hypotenuse(player.vel[0], player.vel[1])
+    trueSpeed = mymath.hypotenuse(player.vel[0], player.vel[1])
     drawLabel(f"Absolute Speed:{trueSpeed}", 100, 70, align = 'left')
 
     drawLabel(f"Pos: {player.pos}", 100, 90, align = 'left')
@@ -723,19 +897,24 @@ def redrawAll(app):
 # === APP INITIALIZATION ===
 
 def debugGamut(app):
+    barrierString = '====='.join('#.#.#.#.#.#.#.#'.split('.'))
+
+    print(barrierString)
+    for objectClass in [Helperball, Helperline, SmallBody, Planet]:
+        print("Now calling objects of", objectClass)
+        for instance in objectClass.Instances:
+            print(instance)
+        print()
+    print(barrierString)
     app.isTheGravityOn = False
 
 def onAppStart(app):
-    #generateCollisionMeshes()
+    debugGamut(app)
     # Game state
     app.stepsPerSecond = 30
+    app.paused = False
     app.bigG = 2
     app.debugPrint = True
-
-    for objectClass in [Helperball, Helperline, SmallBody, Planet]:
-        print("How calling objects of", objectClass)
-        for instance in objectClass.Instances:
-            print(instance)
 
 # === MAIN ===
 
