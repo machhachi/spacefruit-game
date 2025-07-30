@@ -146,7 +146,15 @@ class Vector(): # A package of vector functions
     
     def add2to3(self, v3, v2):
         return(v3[0] + v2[0], v3[1] + v2[1], v3[2])
-
+    
+    def rotate(self, v, theta):
+            inputX = v[0]
+            inputY = v[1]
+            theta = math.radians(theta)
+            rotatedX = math.cos(theta) * inputX - math.sin(theta) * inputY
+            rotatedY = math.sin(theta) * inputX + math.cos(theta) * inputY
+            return rotatedX, rotatedY
+    
 vector = Vector()
 
 class Motion(): # Specific handlers for my motion (mostly conversion from tuples to lists)
@@ -406,9 +414,14 @@ class Player(SmallBody):
     def __init__(self, pos, vel, size, mass):
         super().__init__(pos, vel, size, mass)
         self.thrust = [0, 0]
+
         self.boostMeter = 100
         self.boostMax = 100
         self.boostRefillRate = 1
+
+        self.landing = False
+        
+        self.thrustSpriteIndex = 0
 
         self.thrustConstants = {
             'thrustForce': 5,
@@ -438,6 +451,7 @@ class Player(SmallBody):
                 ( int('w' in setKeys) - int('s' in setKeys) ) * self.thrustConstants['thrustForce'],
                 ( int('d' in setKeys) - int('a' in setKeys) ) * self.thrustConstants['rollForce']
             ]
+            player.thrustSpriteIndex = (player.thrustSpriteIndex + 1) % 4
     
     def thrustKeysReleased(self):
         player.thrust = [0, 0]
@@ -501,15 +515,67 @@ class Player(SmallBody):
         self.stepBoost()
         self.collide()
         self.takePhysicsStep(app)
-
+    
     # Rendering
-    def draw(self, app):
-        image = 'assets/player/player.png'
-        rawWidth, rawHeight = getImageSize(image)
-        myScaleFactor = 0.5
-        realWidth, realHeight = render.getScale(rawWidth * myScaleFactor), render.getScale(rawHeight * myScaleFactor)
-        drawImage('assets/player/player.png', *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), width = realWidth, height = realHeight, align = 'center')
+    
+    def getFlamesThatShouldBeDrawn(self):
+        # Returns one list based on whether or not to display the rocket flames
+        result = []
+        if self.thrust[1] < 0: # If turning left, display right thruster
+            result.append('right')
+        if self.thrust[1] > 0: # If turning right, left thruster
+            result.append('left')
+        if self.thrust[0] != 0: # If moving forward, whatever, run the main
+            result.append('main')
+        print(result)
+        return result
 
+    def draw(self, app):
+        mainSprite = "assets/player/player_base.png"
+
+        rawWidth, rawHeight = getImageSize(mainSprite) # ought to be 500 x 500
+        playerScaleFactor = 0.0293 # 60 / 2048
+        realWidth, realHeight = render.getScale(rawWidth * playerScaleFactor), render.getScale(rawHeight * playerScaleFactor)
+
+        # Drawing possible thrust directions
+        if player.thrust != [0, 0]: # Cull for processing speed
+            for direction in self.getFlamesThatShouldBeDrawn(): # One string for each thruster
+                flameSprite = f"assets/player/player_flame_{direction}_{self.thrustSpriteIndex + 1}.png"
+                drawImage(flameSprite,
+                        *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
+                        width = realWidth * 2, height = realHeight * 2, align = 'center')
+                
+        # Drawing player
+
+        drawImage(mainSprite, 
+                  *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
+                  width = realWidth, height = realHeight, align = 'center')
+        
+        # Drawing two types of landing legs
+
+        #landingCondition = 'open' if self.landing else 'closed'
+        #landingSprite = f"assets/player/player_landing_{landingCondition}.png"
+
+        #drawImage(landingSprite, 
+        #          *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
+        #          width = realWidth, height = realHeight, align = 'center')
+    
+    def draw(self, app):
+
+        drawCircle(*render.getCoords(self.pos), render.getScale(self.size * 2))
+
+        debugMainSprite = "assets/TRANSPARENCY TEST SHUTTLE-01.png"
+
+        rawWidth, rawHeight = getImageSize(debugMainSprite) # ought to be 500 x 500
+        playerScaleFactor = 0.03 # 3 / 25, the pixel ratio from 500x500 sprite to 60x60 game natural size
+        realWidth, realHeight = render.getScale(rawWidth * playerScaleFactor), render.getScale(rawHeight * playerScaleFactor)
+
+        drawImage(debugMainSprite, 
+                  *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
+                  width = realWidth, height = realHeight, align = 'center')
+
+
+        
 class Fruit(SmallBody):
     def __init__(self, pos, vel, type, customSize = None, customMass = None):
         super().__init__(pos, vel)
@@ -577,6 +643,12 @@ class Planet():
 
     def getPosVelData(self):
         return self.pos, self.vel
+    
+    def setPos(self, newpos):
+        self.pos = newpos
+    
+    def setVel(self, newvel):
+        self.vel = newvel
 
 class SpherePlanet(Planet):
     Instances = []
@@ -586,9 +658,6 @@ class SpherePlanet(Planet):
         # So this sphereplanet is ALSO contained in the list of general
         self.size = size
         self.color = color
-        self.collisionRadius = self.size + player.size
-
-        SpherePlanet.Instances.append(self)
 
         # Set pos angle to default if not defined
         if len(self.pos) < 3:
@@ -597,6 +666,8 @@ class SpherePlanet(Planet):
                 self.pos[1],
                 0 # Default angle
             ]
+        
+        SpherePlanet.Instances.append(self)
 
     def __repr__(self):
         return f"Planet, sphere (s={self.pos}, v={self.vel}, m={self.mass}, r={self.size})"
@@ -612,12 +683,6 @@ class SpherePlanet(Planet):
                     render.getScale(self.size), 
                     rotateAngle = render.getAngle(self.pos),
                     fill = self.color)
-    
-    def drawCollider(self, app):
-        drawCircle(*render.getCoords(self.pos), 
-                   render.getScale(self.collisionRadius), 
-                   rotateAngle = render.getAngle(self.pos),
-                   fill = None, border = 'red', dashes = True)
 
 class LinePlanet(Planet):
     Instances = []
@@ -629,6 +694,14 @@ class LinePlanet(Planet):
         self.mesh = mesh
         self.setCollisionCheckRadius()
 
+        # Set pos angle to default if not defined
+        if len(self.pos) < 3:
+            self.pos = [
+                self.pos[0],
+                self.pos[1],
+                0 # Default angle
+            ]
+
         LinePlanet.Instances.append(self)
 
     def __repr__(self):
@@ -636,10 +709,14 @@ class LinePlanet(Planet):
 
     # Mesh Helping
     def getWorldspaceMesh(self):
+        rotatedOffsets = [
+            vector.rotate(thisPoint, self.pos[2])
+                for thisPoint in self.mesh
+        ]
         return [
             (thisPoint[0] + self.pos[0], 
              thisPoint[1] + self.pos[1]) 
-                for thisPoint in self.mesh
+                for thisPoint in rotatedOffsets
         ]
     
     def getLinesFromPoints(self, points):
@@ -697,7 +774,7 @@ class LinePlanet(Planet):
     def generateExpandedCornerMesh(self, d):
         originalLines = self.getWorldMeshLines()
 
-        convexVertices = []
+        convexVertices = [] # Name is vestigial. Don't need to avoid putting these in concavities.
         for pointIndex in range(len(originalLines)):
             firstSegment = originalLines[pointIndex - 1] # If the first pair is (-1) and (0), we've successfully wound without exceeding loop indices
             secondSegment = originalLines[pointIndex]
@@ -720,19 +797,7 @@ class LinePlanet(Planet):
         # Circle collisions, of ANY radius, with an arbitrary polygon? Gorgeous.
 
         # === # === # === # === #
-        # PART 1: COLLIDING WITH ROUNDED VERTICES OF THE EXPANDED MESH
-        # === # === # === # === #
-
-        expansionVertices = self.generateExpandedCornerMesh(expandRadius)
-
-        for testVertex in expansionVertices:
-            if vector.distance(testVertex, testPoint) <= expandRadius: # Colliding with this circle:
-                normal = vector.unit(vector.subtract(testPoint, testVertex))
-                depth = vector.distance(testVertex, testPoint) - expandRadius # should be negative
-                return normal, depth
-
-        # === # === # === # === #
-        # PART 2: COLLIDING WITH LINEAR SEGMENTS OF THE EXPOSED MESH
+        # PART 1: COLLIDING WITH LINEAR SEGMENTS OF THE EXPOSED MESH
         # === # === # === # === #
 
         expandedMesh = self.generateExpandedLinearMesh(expandRadius)
@@ -782,6 +847,18 @@ class LinePlanet(Planet):
                 return normal, -absDepth # depth should be negative
 
             return segmentToCollisionData(closestSegment)
+        
+        # === # === # === # === #
+        # PART 2: COLLIDING WITH ROUNDED VERTICES OF THE EXPANDED MESH
+        # === # === # === # === #
+
+        expansionVertices = self.generateExpandedCornerMesh(expandRadius)
+
+        for testVertex in expansionVertices:
+            if vector.distance(testVertex, testPoint) <= expandRadius: # Colliding with this circle:
+                normal = vector.unit(vector.subtract(testPoint, testVertex))
+                depth = vector.distance(testVertex, testPoint) - expandRadius # should be negative
+                return normal, depth
         
         # Goddamn it. It really puts things into perspective when you can spend ten hours developing a line collider and six lines rewriting a circle one
 
@@ -841,6 +918,62 @@ class LinePlanet(Planet):
             lineEnd = render.getCoords(thisLine[1])
             drawLine(*lineStart, *lineEnd, fill = 'red', lineWidth = render.getScale(2))
 
+# === CLASSES: MOVEMENT CONTROLLERS ===
+
+class OrbitPath():
+    def __init__(self, adoptedPlanet):
+        assert(isinstance(adoptedPlanet, Planet))
+        self.pathedPlanet = adoptedPlanet
+
+        self.positionAlongPath = 0 # Increases evenly up to (2pi?)
+        
+        self.initialAngle = 0
+
+    @staticmethod
+    def globalInitializePosition(planetToInitialize, pos = [0, 0, 0]):
+        planetToInitialize.setPos(pos)
+        planetToInitialize.setVel([0, 0, 0])
+    
+    def initializeOrbitPosition(self, startAngle = 0):
+        pass
+
+    def defineOrbit(self, orbitCenter, radius, speed): # speed roughly in degrees per second
+        assert(isinstance(orbitCenter, Planet) or isinstance(orbitCenter, tuple) or isinstance(orbitCenter(list)))
+        if isinstance(orbitCenter, Planet):
+            self.orbitCenterPos = orbitCenter.pos # Hopefully we can directly alias these together
+            self.orbitCenterVel = orbitCenter.vel # DO NOT MODIFY THIS DIRECTLY AS TO NOT BREAK ALIASING. DON'T FUCKING DO IT
+        else:
+            self.orbitCenterPos = orbitCenter[:2] # If a provided tuple or list. Centerbody-rotation agnostic. Both, awesomely, can be sliced
+            self.orbitCenterVel = [0, 0]
+
+        self.orbitRadius = radius
+
+        speedInDegreesPerStep = speed / 30
+        self.thetaStep = math.radians(speedInDegreesPerStep)
+
+        def circularRotate(inputX, inputY, theta):
+            theta = math.radians(theta)
+            rotatedX = math.cos(theta) * inputX - math.sin(theta) * inputY
+            rotatedY = math.sin(theta) * inputX + math.cos(theta) * inputY
+            return rotatedX, rotatedY
+        
+        def createOrbitFunction():
+            pass
+        
+    def getPosAlongOrbit(self, trajectoryPoint):
+        return 
+    
+    def step(self):
+        stepSize = self.thetaStep
+        pass
+
+class RotatingPath():
+    pass
+
+
+
+
+
 # === GAME OBJECT INSTANCING ===
 
 # ALL (CORE) POSITION & VELOCITY VECTORS ARE ARE LISTS NOW
@@ -853,10 +986,12 @@ greenPlanet = SpherePlanet([600, 200], [0, 0], 300, 1000, 'green')
 greenHead = Helperball([500, 500], 30)
 
 Apple = SpherePlanet( [100, -100], [0, 0], 100, 200, 'red')
-Orange = SpherePlanet([300, -500], [10, 10], 250, 5000, 'orange')
+#Orange = SpherePlanet([300, -500], [1, -1], 250, 5000, 'orange')
 
 # Polygon points are not stored in lists, they remain tuples. These describe relative positions to the centerpoint, and as such, do not change.
-Quadrangle = LinePlanet([-300, -500], [0, 0], 1000, [(0, 100), (-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
+Quadrangle = LinePlanet([-300, -500, 180], [0, 0], 1000, [(0, 100), (-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
+
+steelOrchard = SpherePlanet([1000, 1000], [-1, -0.2], 750, 10000, 'forestGreen')
 
 # === CLASSES: RENDERING ===
 
@@ -935,8 +1070,8 @@ class Render():
     # SCALE
     # Changes screen scale based on current state of self.scaleChangeDirection
     def stepScale(self):
-        scaleMax = 5
-        scaleMin = 0.1
+        scaleMax = 10
+        scaleMin = 0.2
         # Short circuit if it's even relevant, then ensure within bounds
         if (self.scaleChangeDirection != 0 and
             (self.scaleChangeDirection == 1 and self.scale < scaleMax) or 
@@ -976,7 +1111,6 @@ def onKeyPress(app, key):
     if app.paused and key == 'o':
         takeStep(app)
 
-
 def onKeyHold(app, key):
     player.thrustKeysHeld(key)
     player.generalKeysHeld(app, key)
@@ -1004,7 +1138,24 @@ def redrawAll(app):
             instance.draw(app)
     
     # Velocity line
-    drawLine(*render.getCoords(player.pos), *render.getCoords(vector.add(player.pos, (player.vel[0] * 20, player.vel[1] * 20))), fill = 'red')
+    velocityLineStartRadius = 60
+    velocityLineLengthMultiplier = 10
+
+    velocityLineStart = render.getCoords( 
+        vector.add(
+            player.pos, 
+            vector.scale( vector.unit(player.vel), velocityLineStartRadius)
+        )
+    )
+    velocityLineEnd = render.getCoords(
+        vector.add(
+            vector.add(player.pos, vector.scale(vector.unit(player.vel), velocityLineStartRadius) ),
+            vector.scale(player.vel, velocityLineLengthMultiplier)
+        )
+    )
+    #drawLine(*render.getCoords(player.pos), *velocityLineStart, fill = 'green', dashes = True)
+    drawLine(*velocityLineStart, *velocityLineEnd, fill = 'red')
+    #drawLine(*render.getCoords(player.pos), *render.getCoords(vector.add(player.pos, (player.vel[0] * 20, player.vel[1] * 20))), fill = 'red')
 
     # Planet centerlines
     for thisPlanet in Planet.Instances:
@@ -1024,8 +1175,6 @@ def redrawAll(app):
     drawLabel(f"Pos: {player.pos}", 100, 90, align = 'left')
 
     drawLabel(f"Scale: {render.scale}", 100, 130, align = 'left')
-
-    
 
 # === APP INITIALIZATION ===
 
