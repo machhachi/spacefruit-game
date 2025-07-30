@@ -44,7 +44,12 @@
 # ACHIEVED DIAGETIC LINE PLANET COLLISIONS
 # ACHIEVED MOVING PLANET COLLISIONS
 # ACHIEVED PARAMETERIZED ROTATION
-# Parameterized orbits
+# ACHIEVED PARAMETERIZED ORBITS
+# ACHIEVED COMBINED ROTATION + ORBITS
+# ACHIEVED NESTED ORBITS
+# ACHIEVED LANDING MODE
+
+# Landing mode activating diagetically in collision handler
 # Transparent sprites
 # Preloading images so that they don't lag-spike when first drawn (player flames particularly)
 # Fruit spawning, pickup, inventory
@@ -54,9 +59,9 @@
 
 # Fields of investigation
 
-# Line planet collisions are buggier than I recall, particularly around sharp vertices.
-#   Maybe they've always been that way. IDK. 
-#   Check the ordering of vertex collision vs segment collision. IDK which ordering is ideal - I think segment first is - but not sure.
+# Check nested orbit collisions
+# Check collisions for rotating spheres. Somehow I haven't gotten to the point where I've instantiated a moving sphere, cause I expected 
+# the line plaents EXLUSIVELY to be my problem chlidren.
 
 # Drawing a lineplanet on top of a planet. I think we're ready.
 #   Actually, we've been ready with static planets, but now, we can do it with rotation.
