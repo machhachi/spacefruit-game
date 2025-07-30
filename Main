@@ -128,8 +128,8 @@ class Vector(): # A package of vector functions
     def scale(self, v, k):
         return (v[0] * k, v[1] * k)
     
-    def unit(self, v):
-        return( v[0] / self.len(v), v[1] / self.len(v) )
+    def unit(self, v): # With non-div0 insurance ( I can't believe that didn't come up until now! )
+        return (0, 0) if self.len(v) == 0 else ( v[0] / self.len(v), v[1] / self.len(v) )
     
     def dot(self, v1, v2):
         return v1[0] * v2[0] + v1[1] * v2[1] # startlingly simple
@@ -153,7 +153,7 @@ class Vector(): # A package of vector functions
             theta = math.radians(theta)
             rotatedX = math.cos(theta) * inputX - math.sin(theta) * inputY
             rotatedY = math.sin(theta) * inputX + math.cos(theta) * inputY
-            return rotatedX, rotatedY
+            return (rotatedX, rotatedY)
     
 vector = Vector()
 
@@ -237,6 +237,11 @@ class SmallBody():
             'constantRollDrag': 0
         }
 
+        self.collisionConstants = {
+            'elasticity':0.5,
+            'friction':0.7
+        }
+
     # Physics 
     def takePhysicsStep(self, app):
         # Force
@@ -309,8 +314,9 @@ class SmallBody():
             if vector.distance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
                 normal = thisPlanet.getNormalVectorTo(self.pos) # unit normal vector
                 depth = vector.distance(self.pos, thisPlanet.pos) - (self.size + thisPlanet.size)
+
+                self.moveWithRotatingPlanet(thisPlanet)
                 self.evaluatePlanetCollision(thisPlanet, normal, depth)
-                #self.addPlanetMotion(thisPlanet)
                 
     def collideWithLines(self):
         for thisPlanet in LinePlanet.Instances:
@@ -320,12 +326,28 @@ class SmallBody():
                 collisionResult = thisPlanet.getExpandedCollisionData(self.pos, self.size)
                 if collisionResult != False:
                     normal, trueDepth = collisionResult
+
+                    self.moveWithRotatingPlanet(thisPlanet)
                     self.evaluatePlanetCollision(thisPlanet, normal, trueDepth)
-                    #self.addPlanetMotion(thisPlanet)
 
     def collideWithSmallbodies(self):
         pass  
     
+    def moveWithRotatingPlanet(self, collidingPlanet):
+        assert(isinstance(collidingPlanet, Planet))
+        
+        planetPos, planetVel = collidingPlanet.getPosVelData()  
+        if planetVel[2] != 0: # If planet is rotating!!!:
+            # Just rotate along the position vector relative to planet center
+            smallBodyRelPos = vector.subtract(self.pos, planetPos)
+            rotatedRelPos = vector.rotate(smallBodyRelPos, planetVel[2])
+            
+            linearMovementMade = vector.subtract(rotatedRelPos, smallBodyRelPos) # The distance to travel
+            rotationChanged = -planetVel[2] # The body should corotate with a rotating body it sits on
+            dPosition = list(linearMovementMade) + [rotationChanged] # Format to 3-len list
+
+            motion.plusEq(self.pos, dPosition) # Single mutation should do it
+
     def evaluatePlanetCollision(self, collidingPlanet, normal, depth):
         assert(isinstance(collidingPlanet, Planet))
 
@@ -363,14 +385,12 @@ class SmallBody():
             vYTangential = relativeVelocity[1] - vYRadial
 
             # Radial component: "bounce" speed. Output should be 0x original (inelastic) up to -1x(elastic)
-            elasticity = 0.5
-            newVXRadial = -vXRadial * elasticity
-            newVYRadial = -vYRadial * elasticity
+            newVXRadial = -vXRadial * self.collisionConstants['elasticity']
+            newVYRadial = -vYRadial * self.collisionConstants['elasticity']
 
             # Tangential component: "skid" speed. Multiply by some decreasing fraction, and convert some to rolling.
-            friction = 0.7
-            newVXTangential = vXTangential * (1 - friction)
-            newVYTangential = vYTangential * (1 - friction)
+            newVXTangential = vXTangential * (1 - self.collisionConstants['friction'])
+            newVYTangential = vYTangential * (1 - self.collisionConstants['friction'])
 
             # Roll component: rolling. Whatever was lost in tangential, we assume it goes about fully into rolling.
             #   To get the direction: we need to know if we're moving CW or CCW about the planet 
@@ -379,7 +399,7 @@ class SmallBody():
 
             # Vector transformation for rotating CW 90 degrees
             surfaceTangentX, surfaceTangentY = normalY, -normalX
-            rollVelocity = vector.dot((vXTangential, vYTangential), (surfaceTangentX, surfaceTangentY)) * friction
+            rollVelocity = vector.dot((vXTangential, vYTangential), (surfaceTangentX, surfaceTangentY)) * self.collisionConstants['friction']
 
             # Convert linear to angular by diving by radius
             rollConversionFactor = 10 / self.size # step count
@@ -573,9 +593,7 @@ class Player(SmallBody):
         drawImage(debugMainSprite, 
                   *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
                   width = realWidth, height = realHeight, align = 'center')
-
-
-        
+  
 class Fruit(SmallBody):
     def __init__(self, pos, vel, type, customSize = None, customMass = None):
         super().__init__(pos, vel)
@@ -632,6 +650,13 @@ class Planet():
         self.pos = pos
         self.vel = vel
         self.mass = mass
+
+        # Set default angle if undefined
+        if len(self.pos) < 3:
+            self.pos = [ self.pos[0], self.pos[1], 0 ]
+        if len(self.vel) < 3:
+            self.vel = [ self.vel[0], self.vel[1], 0 ]
+
         Planet.Instances.append(self)
     
     def __repr__(self):
@@ -659,14 +684,6 @@ class SpherePlanet(Planet):
         self.size = size
         self.color = color
 
-        # Set pos angle to default if not defined
-        if len(self.pos) < 3:
-            self.pos = [
-                self.pos[0],
-                self.pos[1],
-                0 # Default angle
-            ]
-        
         SpherePlanet.Instances.append(self)
 
     def __repr__(self):
@@ -693,14 +710,6 @@ class LinePlanet(Planet):
         # I swear to god
         self.mesh = mesh
         self.setCollisionCheckRadius()
-
-        # Set pos angle to default if not defined
-        if len(self.pos) < 3:
-            self.pos = [
-                self.pos[0],
-                self.pos[1],
-                0 # Default angle
-            ]
 
         LinePlanet.Instances.append(self)
 
@@ -921,6 +930,7 @@ class LinePlanet(Planet):
 # === CLASSES: MOVEMENT CONTROLLERS ===
 
 class OrbitPath():
+    Instances = []
     def __init__(self, adoptedPlanet):
         assert(isinstance(adoptedPlanet, Planet))
         self.pathedPlanet = adoptedPlanet
@@ -929,14 +939,14 @@ class OrbitPath():
         
         self.initialAngle = 0
 
+        OrbitPath.Instances.append(self)
+
+
     @staticmethod
     def globalInitializePosition(planetToInitialize, pos = [0, 0, 0]):
         planetToInitialize.setPos(pos)
         planetToInitialize.setVel([0, 0, 0])
     
-    def initializeOrbitPosition(self, startAngle = 0):
-        pass
-
     def defineOrbit(self, orbitCenter, radius, speed): # speed roughly in degrees per second
         assert(isinstance(orbitCenter, Planet) or isinstance(orbitCenter, tuple) or isinstance(orbitCenter(list)))
         if isinstance(orbitCenter, Planet):
@@ -951,14 +961,13 @@ class OrbitPath():
         speedInDegreesPerStep = speed / 30
         self.thetaStep = math.radians(speedInDegreesPerStep)
 
-        def circularRotate(inputX, inputY, theta):
-            theta = math.radians(theta)
-            rotatedX = math.cos(theta) * inputX - math.sin(theta) * inputY
-            rotatedY = math.sin(theta) * inputX + math.cos(theta) * inputY
-            return rotatedX, rotatedY
-        
-        def createOrbitFunction():
-            pass
+    @staticmethod
+    def initalize():
+        for thisOrbit in OrbitPath.Instances:
+            thisOrbit.initalizeOrbitposition()
+
+    def initializeOrbitPosition(self, startAngle = 0):
+        pass
         
     def getPosAlongOrbit(self, trajectoryPoint):
         return 
@@ -968,7 +977,43 @@ class OrbitPath():
         pass
 
 class RotatingPath():
-    pass
+    Instances = []
+    def __init__(self, adoptedPlanet):
+        assert(isinstance(adoptedPlanet, Planet))
+        self.pathedPlanet = adoptedPlanet
+
+        self.rotationT = 0
+        self.maxT = 360
+        # In this system, rotationT corresponds 1-1 from path theta to planet rotation
+
+        RotatingPath.Instances.append(self)
+    
+    # Object definition
+    
+    def defineRotation(self, degreesPerSecond, initialTheta = 0): # Called in object definition
+        degreesPerTick = degreesPerSecond / 30
+
+        self.rotationT = initialTheta
+        self.speed = degreesPerTick
+
+    # App initialization
+
+    @staticmethod
+    def initalize():
+        for thisRotation in RotatingPath.Instances:
+            thisRotation.initializeRotation()
+    
+    
+    def initializeRotation(self): # Called on app start
+        self.pathedPlanet.pos[2] = self.rotationT
+    
+    def step(self):
+        # Calculate where the planet should be, and then plug it straight in
+        self.rotationT = (self.rotationT + self.speed) % self.maxT
+        self.pathedPlanet.pos[2] = self.rotationT
+        self.pathedPlanet.vel[2] = self.speed
+        #print("Current rotation:", self.pathedPlanet.pos[2])
+
 
 
 
@@ -980,18 +1025,39 @@ class RotatingPath():
 # WE LOVE MUTABILITY
 # frankly there should be an additional kind of data type, with a set number of slots but is perfectly able to change data within them
 
-appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
+#appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
 
-greenPlanet = SpherePlanet([600, 200], [0, 0], 300, 1000, 'green')
-greenHead = Helperball([500, 500], 30)
+#greenPlanet = SpherePlanet([600, 200], [0, 0], 300, 1000, 'green')
+#greenHead = Helperball([500, 500], 30)
 
-Apple = SpherePlanet( [100, -100], [0, 0], 100, 200, 'red')
+#Apple = SpherePlanet( [100, -100], [0, 0], 100, 200, 'red')
 #Orange = SpherePlanet([300, -500], [1, -1], 250, 5000, 'orange')
 
 # Polygon points are not stored in lists, they remain tuples. These describe relative positions to the centerpoint, and as such, do not change.
-Quadrangle = LinePlanet([-300, -500, 180], [0, 0], 1000, [(0, 100), (-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
+Quadrangle = LinePlanet([-300, -500, 180], [0, 0], 0, [(0, 100), (-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
 
-steelOrchard = SpherePlanet([1000, 1000], [-1, -0.2], 750, 10000, 'forestGreen')
+posHelperLine1 = Helperline([0, 0], [0, 0], 5, 'green')
+posHelperLine2 = Helperline([0, 0], [0, 0], 5, 'orchid')
+
+
+#steelOrchard = SpherePlanet([1000, -1000], [0, 0], 750, 10000, 'forestGreen')
+
+
+centerOfTheUniverse = Helperball([0, 0], 50, 'black')
+
+# === PATH INSTANCING ===
+
+# First and solidly first: for every planet relevant to the orbiting system, call globalInitializePosition
+#OrbitPath.globalInitializePosition(Apple)
+OrbitPath.globalInitializePosition(Quadrangle)
+
+# Then, define an appropriate path object for each planet you desire.
+# Follow that with the appropriate define method, which specifies relevant characteristics to the path
+#appleSpinner = RotatingPath(Apple)
+#appleSpinner.defineRotation(30, 0)
+
+quadSpinner = RotatingPath(Quadrangle)
+quadSpinner.defineRotation(10, 20)
 
 # === CLASSES: RENDERING ===
 
@@ -1090,7 +1156,9 @@ def onStep(app):
         takeStep(app)
 
 def takeStep(app):
-    # Object stepping
+    for path in OrbitPath.Instances + RotatingPath.Instances:
+        path.step()
+
     for body in SmallBody.Instances:
         body.step(app)
     
@@ -1155,8 +1223,7 @@ def redrawAll(app):
     )
     #drawLine(*render.getCoords(player.pos), *velocityLineStart, fill = 'green', dashes = True)
     drawLine(*velocityLineStart, *velocityLineEnd, fill = 'red')
-    #drawLine(*render.getCoords(player.pos), *render.getCoords(vector.add(player.pos, (player.vel[0] * 20, player.vel[1] * 20))), fill = 'red')
-
+    
     # Planet centerlines
     for thisPlanet in Planet.Instances:
         playerCoords = render.getCoords(player.pos)
@@ -1192,6 +1259,9 @@ def debugGamut(app):
 
 def onAppStart(app):
     debugGamut(app)
+
+    RotatingPath.initalize()
+    OrbitPath.initalize()
     # Game state
     app.stepsPerSecond = 30
     app.paused = False
