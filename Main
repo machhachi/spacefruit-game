@@ -323,11 +323,10 @@ class SmallBody():
         if abs(self.vel[2]) < self.constants['minimumRotationalSpeed']:
             self.vel[2] = 0
 
-    # Collision
+    # Planet Collision
     def collide(self):
         self.collideWithSpheres()
         self.collideWithLines()
-        self.collideWithSmallbodies()
 
     def collideWithSpheres(self):
         for thisPlanet in SpherePlanet.Instances:
@@ -336,8 +335,8 @@ class SmallBody():
                 normal = thisPlanet.getNormalVectorTo(self.pos) # unit normal vector
                 depth = vector.distance(self.pos, thisPlanet.pos) - (self.size + thisPlanet.size)
 
-                self.moveWithRotatingPlanet(thisPlanet)
                 self.evaluatePlanetCollision(thisPlanet, normal, depth)
+                self.moveWithRotatingPlanet(thisPlanet)
                 
     def collideWithLines(self):
         for thisPlanet in LinePlanet.Instances:
@@ -348,12 +347,9 @@ class SmallBody():
                 if collisionResult != False:
                     normal, trueDepth = collisionResult
 
-                    self.moveWithRotatingPlanet(thisPlanet)
                     self.evaluatePlanetCollision(thisPlanet, normal, trueDepth)
+                    self.moveWithRotatingPlanet(thisPlanet)
 
-    def collideWithSmallbodies(self):
-        pass  
-    
     def moveWithRotatingPlanet(self, collidingPlanet):
         assert(isinstance(collidingPlanet, Planet))
         
@@ -405,29 +401,42 @@ class SmallBody():
             vXTangential = relativeVelocity[0] - vXRadial
             vYTangential = relativeVelocity[1] - vYRadial
 
+            # PLAYER INJECTION
+            if isinstance(self, Player) and player.landing: # Modify characteristics to landing characteristics
+                elasticity = player.landingConstants['elasticity']
+                friction = player.landingConstants['friction']
+            else:
+                elasticity = self.collisionConstants['elasticity']
+                friction = self.collisionConstants['friction']
+
             # Radial component: "bounce" speed. Output should be 0x original (inelastic) up to -1x(elastic)
-            newVXRadial = -vXRadial * self.collisionConstants['elasticity']
-            newVYRadial = -vYRadial * self.collisionConstants['elasticity']
+            newVXRadial = -vXRadial * elasticity
+            newVYRadial = -vYRadial * elasticity
 
             # Tangential component: "skid" speed. Multiply by some decreasing fraction, and convert some to rolling.
-            newVXTangential = vXTangential * (1 - self.collisionConstants['friction'])
-            newVYTangential = vYTangential * (1 - self.collisionConstants['friction'])
+            newVXTangential = vXTangential * (1 - friction)
+            newVYTangential = vYTangential * (1 - friction)
 
-            # Roll component: rolling. Whatever was lost in tangential, we assume it goes about fully into rolling.
-            #   To get the direction: we need to know if we're moving CW or CCW about the planet 
-            #   If you rotate the normal vector (points outwards) 90 degrees CW, that now points in the CW-about-planet direction
-            #   And we can use dot product to see if we're aligned or unaligned with that
+            if not (isinstance(self, Player) and player.landing):
 
-            # Vector transformation for rotating CW 90 degrees
-            surfaceTangentX, surfaceTangentY = normalY, -normalX
-            rollVelocity = vector.dot((vXTangential, vYTangential), (surfaceTangentX, surfaceTangentY)) * self.collisionConstants['friction']
+                # Roll component: rolling. Whatever was lost in tangential, we assume it goes about fully into rolling.
+                #   To get the direction: we need to know if we're moving CW or CCW about the planet 
+                #   If you rotate the normal vector (points outwards) 90 degrees CW, that now points in the CW-about-planet direction
+                #   And we can use dot product to see if we're aligned or unaligned with that
 
-            # Convert linear to angular by diving by radius
-            rollConversionFactor = 10 / self.size # step count
+                # Vector transformation for rotating CW 90 degrees
+                surfaceTangentX, surfaceTangentY = normalY, -normalX
+                rollVelocity = vector.dot((vXTangential, vYTangential), (surfaceTangentX, surfaceTangentY)) * friction
+
+                # Convert linear to angular by diving by radius
+                rollConversionFactor = 10 / self.size # I feel like the 10 should be 30 for step count, but that creates too dramatic of an effect
+                
+                # Decreasing old angular velocity is a crack solution to the rolling-amplification issue I had a bit ago
+                oldRollCarryover = relativeVelocity[2] * 0.95
+                newVTheta = oldRollCarryover + rollVelocity * rollConversionFactor
             
-            # Decreasing old angular velocity is a crack solution to the rolling-amplification issue I had a bit ago
-            oldRollCarryover = relativeVelocity[2] * 0.95
-            newVTheta = oldRollCarryover + rollVelocity * rollConversionFactor
+            else:
+                newVTheta = -collidingPlanet.vel[2]
 
             # Recombine 
 
@@ -438,9 +447,7 @@ class SmallBody():
             ]
 
             self.vel = injectPlanetMotion(recombinedVel, collidingPlanet)
-
     
-
     # Rendering
     def draw(self, app):
         drawCircle(*render.getCoords(self.pos), render.getScale(self.size), fill = 'black')
@@ -476,6 +483,11 @@ class Player(SmallBody):
             'constantThrustDrag': 0.02,
             'constantRollDrag': 0.1
         }
+
+        self.landingConstants = {
+            'elasticity': 0,
+            'friction': 1
+        }
   
     # Key inputs
     def thrustKeysPressed(self, key):
@@ -498,7 +510,9 @@ class Player(SmallBody):
         player.thrust = [0, 0]
 
     def generalKeysPressed(self, app, key):
-        pass
+        if key == 'l':
+            self.landing = not self.landing
+            print(f"Now{' ' if self.landing else ' not '}landing!")
     
     def generalKeysHeld(self, app, keyList):
         render.scaleChangeDirection = int('up' in keyList) - int('down' in keyList)
@@ -684,8 +698,8 @@ class Planet():
         return f"Planet, default (s={self.pos}, v={self.vel}, m={self.mass})"
     
     def step(self):
-        motion.plusEq(self.pos, self.vel)
         pass # As per (ideal) implementation of orbit paths, planets do not handle their own motion. They are perfectly parameterized, not simulated
+        # Velocity is only stored internally to compute collisions
 
     def getPosVelData(self):
         return self.pos, self.vel
@@ -695,6 +709,20 @@ class Planet():
     
     def setVel(self, newvel):
         self.vel = newvel
+
+    def setLinearPos(self, newPosition):
+        self.pos[0] = newPosition[0]
+        self.pos[1] = newPosition[1]
+
+    def setRotationPos(self, newRotation):
+        self.pos[2] = newRotation
+
+    def setLinearVel(self, newVelocity):
+        self.vel[0] = newVelocity[0]
+        self.vel[1] = newVelocity[1]
+
+    def setRotationVel(self, newVelocity):
+        self.vel[2] = newVelocity
 
 class SpherePlanet(Planet):
     Instances = []
@@ -865,7 +893,7 @@ class LinePlanet(Planet):
             closestSegment = None
             for segment in expandedMesh:
                 area = vector.heronAreaByPoints(*segment, testPoint)
-                if minArea == None or area < minArea:
+                if minArea == None or area == 0 or area < minArea:
                     closestSegment = segment
                     minArea = area
             
@@ -950,25 +978,26 @@ class LinePlanet(Planet):
 
 # === CLASSES: MOVEMENT CONTROLLERS ===
 
+class Path():
+    @staticmethod
+    def globalInitializePosition(planetToInitialize):
+        planetToInitialize.setPos([0, 0, 0])
+        planetToInitialize.setVel([0, 0, 0])
+
 class OrbitPath():
     Instances = []
     def __init__(self, adoptedPlanet):
         assert(isinstance(adoptedPlanet, Planet))
         self.pathedPlanet = adoptedPlanet
 
-        self.positionAlongPath = 0 # Increases evenly up to (2pi?)
-        
-        self.initialAngle = 0
+        self.orbitT = 0 # Increases evenly up to 360
+        self.maxT = 360
 
         OrbitPath.Instances.append(self)
-
-
-    @staticmethod
-    def globalInitializePosition(planetToInitialize, pos = [0, 0, 0]):
-        planetToInitialize.setPos(pos)
-        planetToInitialize.setVel([0, 0, 0])
     
-    def defineOrbit(self, orbitCenter, radius, speed): # speed roughly in degrees per second
+    # Object definition
+
+    def defineOrbit(self, orbitCenter, radius, degreesPerSecond, initialTheta = 0): # speed in deg / sec
         assert(isinstance(orbitCenter, Planet) or isinstance(orbitCenter, tuple) or isinstance(orbitCenter(list)))
         if isinstance(orbitCenter, Planet):
             self.orbitCenterPos = orbitCenter.pos # Hopefully we can directly alias these together
@@ -979,24 +1008,45 @@ class OrbitPath():
 
         self.orbitRadius = radius
 
-        speedInDegreesPerStep = speed / 30
-        self.thetaStep = math.radians(speedInDegreesPerStep)
+        self.degreesPerStep = degreesPerSecond / 30
+
+        self.orbitT = initialTheta # Just get it started. No beating around the bush
+
+        def circularOrbitFunc(theta):
+            initialPos = (self.orbitRadius, 0) # zero theta corresponds to +x, as trigonometry mandates
+            return vector.rotate(initialPos, theta)
+
+        self.orbitFunction = circularOrbitFunc # Now we can call orbitfunction and it should give us the desired position based on T
 
     @staticmethod
     def initalize():
         for thisOrbit in OrbitPath.Instances:
-            thisOrbit.initalizeOrbitposition()
+            thisOrbit.initializeOrbitPosition()
 
-    def initializeOrbitPosition(self, startAngle = 0):
-        pass
-        
-    def getPosAlongOrbit(self, trajectoryPoint):
-        return 
+    def initializeOrbitPosition(self):
+        pass # lowkey... since step is always hard-setting the position, I actually don't need to move it anywhere.
+        # It requires that aliasing to the center pos and velocity didn't work. If it doesn't...
+        # That's an entirely different story
     
     def step(self):
-        stepSize = self.thetaStep
-        pass
+        # Calculate current position along trajectory
+        self.orbitT = (self.orbitT + self.degreesPerStep) % self.maxT
 
+        # Calculate current relative position
+        currentRelativeOrbitPos = self.orbitFunction(self.orbitT)
+
+        # Calculate current relative velocity
+        futureRelativeOrbitPos = self.orbitFunction(self.orbitT + self.degreesPerStep)
+        relativeVelocity = vector.subtract(futureRelativeOrbitPos, currentRelativeOrbitPos)
+
+        # Calculate current world position and velocity
+        currentWorldOrbitPos = vector.add(currentRelativeOrbitPos, self.orbitCenterPos) # Run checks to make sure this CHANGES if we parent to a moving body
+        currentWorldOrbitVel = vector.add(relativeVelocity, self.orbitCenterVel)
+
+        # Push to planet
+        self.pathedPlanet.setLinearPos(currentWorldOrbitPos)
+        self.pathedPlanet.setLinearVel(currentWorldOrbitVel)
+    
 class RotatingPath():
     Instances = []
     def __init__(self, adoptedPlanet):
@@ -1024,18 +1074,15 @@ class RotatingPath():
         for thisRotation in RotatingPath.Instances:
             thisRotation.initializeRotation()
     
-    
     def initializeRotation(self): # Called on app start
-        self.pathedPlanet.pos[2] = self.rotationT
+        pass
+        #self.pathedPlanet.setRotationPos(self.rotationT)
     
     def step(self):
         # Calculate where the planet should be, and then plug it straight in
         self.rotationT = (self.rotationT + self.speed) % self.maxT
-        self.pathedPlanet.pos[2] = self.rotationT
-        self.pathedPlanet.vel[2] = self.speed
-
-
-
+        self.pathedPlanet.setRotationPos(self.rotationT)
+        self.pathedPlanet.setRotationVel(self.speed)
 
 
 # === GAME OBJECT INSTANCING ===
@@ -1044,20 +1091,11 @@ class RotatingPath():
 # WE LOVE MUTABILITY
 # frankly there should be an additional kind of data type, with a set number of slots but is perfectly able to change data within them
 
-#appleBall = SmallBody([-30, 20, 0], [0, 0, 0], 25, 40)
-
-#greenPlanet = SpherePlanet([600, 200], [0, 0], 300, 1000, 'green')
-#greenHead = Helperball([500, 500], 30)
-
-#Apple = SpherePlanet( [100, -100], [0, 0], 100, 200, 'red')
+Apple = SpherePlanet( [1000, -100], [0, 0], 100, 200, 'red')
 #Orange = SpherePlanet([300, -500], [1, -1], 250, 5000, 'orange')
 
 # Polygon points are not stored in lists, they remain tuples. These describe relative positions to the centerpoint, and as such, do not change.
-Quadrangle = LinePlanet([-300, -500, 180], [0, 0], 100, [(0, 100), (-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
-
-posHelperLine1 = Helperline([0, 0], [0, 0], 5, 'green')
-posHelperLine2 = Helperline([0, 0], [0, 0], 5, 'orchid')
-
+Quadrangle = LinePlanet([-300, -500, 0], [0, 0], 1000, [(-200, 100), (-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
 
 #steelOrchard = SpherePlanet([1000, -1000], [0, 0], 750, 10000, 'forestGreen')
 
@@ -1066,17 +1104,22 @@ centerOfTheUniverse = Helperball([0, 0], 50, 'black')
 
 # === PATH INSTANCING ===
 
-# First and solidly first: for every planet relevant to the orbiting system, call globalInitializePosition
-#OrbitPath.globalInitializePosition(Apple)
-OrbitPath.globalInitializePosition(Quadrangle)
+# First and solidly first: for every planet relevant to the path system, call globalInitializePosition
+#Path.globalInitializePosition(Apple)
+Path.globalInitializePosition(Quadrangle)
+Path.globalInitializePosition(Apple)
 
 # Then, define an appropriate path object for each planet you desire.
 # Follow that with the appropriate define method, which specifies relevant characteristics to the path
-#appleSpinner = RotatingPath(Apple)
-#appleSpinner.defineRotation(30, 0)
 
-quadSpinner = RotatingPath(Quadrangle)
-quadSpinner.defineRotation(10, 20)
+quadMover = OrbitPath(Quadrangle)
+quadMover.defineOrbit((0, 0), 400, 10, 0)
+
+appleMover = OrbitPath(Apple)
+appleMover.defineOrbit(Quadrangle, 300, 30, 180)
+
+#quadSpinner = RotatingPath(Quadrangle)
+#quadSpinner.defineRotation(10, 0)
 
 # === CLASSES: RENDERING ===
 
