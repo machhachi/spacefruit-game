@@ -38,25 +38,50 @@
 # <=> Desires <=>
 
 # Real current projects
+
 # ACHIEVED GENERAL GRAVITY
 # ACHIEVED LINE PLANETS
 # ACHIEVED DIAGETIC LINE PLANET COLLISIONS
 # ACHIEVED MOVING PLANET COLLISIONS
-# Parameterized planet paths and the OrbitPath class that defines them
+# ACHIEVED PARAMETERIZED ROTATION
+# Parameterized orbits
+# Transparent sprites
+# Preloading images so that they don't lag-spike when first drawn (player flames particularly)
 # Fruit spawning, pickup, inventory
 # Text particles?
 
-# Orbit paths
+
+
+# Fields of investigation
+
+# Line planet collisions are buggier than I recall, particularly around sharp vertices.
+#   Maybe they've always been that way. IDK. 
+#   Check the ordering of vertex collision vs segment collision. IDK which ordering is ideal - I think segment first is - but not sure.
+
+# Drawing a lineplanet on top of a planet. I think we're ready.
+#   Actually, we've been ready with static planets, but now, we can do it with rotation.
+#   Make sure the sphere and line planets share a center, then, the rotation method should do the trick.
+
+# Bottom of screen aligns to biggest gravity influence
+# You can go into smallbody logic and run code if the current instance is a player.
+# Do that, to pump out the list of gravitational pulls (magnitude and direction both needed) to some sort of list attribute
+# In render, create a method that makes a weighted average
+# and submits the angle to the master rotate
 
 
 # Physics engine level developments
 
-# - Small body contains an elasticity variable, to be 
-#   - A) customized per smallbody instance (i.e. fruit)
-#   - B) varied based on player orientation (0 elasticity on landing gear side)
+# Develop a landing mode for player - for it to have a bottom orientation whenever it collides, and for it to then have:
+#   - no elasticity
+#   - really strong friction
+#       - or perhaps some method of engaging in pure corotation with the planet body
+#       - This happened in my rotationPath development. Early on, I tried directly setting the player rotation velocity to negative planet rotation velocity
+#       - And while it produced the most stable effect, it did prevent the player thrust rotation from really doing anything.
+#       - That wasn't going to cut it then, but could that be a desirable result now?
 
 # Entity culling for rendering at certain distance(all things have pos attribute)
 # Perhaps entity culling for gravity as well
+
 
 
 # Entirely new mechanisms
@@ -66,16 +91,12 @@
 #           And it'll also be relevant, in the scale calculations, to define a furthest distance from the player the thing can be at
 #       Probe, when mouse is being held, exerts a strong gravity on, i guess, all non-player smallbodies
 
-#   Drawing line planets on top of other planets!
-#       Not too hard if static (example, can we get a stonehenge arch on a sphere planet? Easily, with a no-mass line planet)
-#       But reason out some sort of velocity parenting mechanism as well
+
 
 # HUD elemtents needed:
 #   Boost meter
 #   Strongest gravity influence
 #   Velocity
-
-# Bottom of screen aligns to biggest gravity influence
 
 
 # === IMPORTS ===
@@ -1012,8 +1033,6 @@ class RotatingPath():
         self.rotationT = (self.rotationT + self.speed) % self.maxT
         self.pathedPlanet.pos[2] = self.rotationT
         self.pathedPlanet.vel[2] = self.speed
-        #print("Current rotation:", self.pathedPlanet.pos[2])
-
 
 
 
@@ -1034,7 +1053,7 @@ class RotatingPath():
 #Orange = SpherePlanet([300, -500], [1, -1], 250, 5000, 'orange')
 
 # Polygon points are not stored in lists, they remain tuples. These describe relative positions to the centerpoint, and as such, do not change.
-Quadrangle = LinePlanet([-300, -500, 180], [0, 0], 0, [(0, 100), (-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
+Quadrangle = LinePlanet([-300, -500, 180], [0, 0], 100, [(0, 100), (-100, -100), (100, -200), (150, 100), (100, 400), (-300, 300)])
 
 posHelperLine1 = Helperline([0, 0], [0, 0], 5, 'green')
 posHelperLine2 = Helperline([0, 0], [0, 0], 5, 'orchid')
