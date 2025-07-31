@@ -34,6 +34,8 @@
 #   - The player 'camera' can move, rotate, and zoom in/out at will,
 #   - And, as mathematics intended, positive Y correlates to upwards on the screen.
 
+# FadingScreentext objects and the Velocity indicator in Player both operate on some PID-inspired opacity changing, if that piques your interest.
+
 
 # <=> Desires <=>
 
@@ -48,9 +50,12 @@
 # ACHIEVED COMBINED ROTATION + ORBITS
 # ACHIEVED NESTED ORBITS
 # ACHIEVED LANDING MODE
+# ACHIEVED DIAGETIC LANDING MODE ACTIVATION
+# ACHEIVED TRANSPARENT SPRITES
+# ACHIEVED VELOCITY INDICATOR
+# ACHIEVED START + PAUSE MENUS
 
-# Landing mode activating diagetically in collision handler
-# Transparent sprites
+
 # Preloading images so that they don't lag-spike when first drawn (player flames particularly)
 # Fruit spawning, pickup, inventory
 # Text particles?
@@ -59,35 +64,13 @@
 
 # Fields of investigation
 
-# Check nested orbit collisions
-# Check collisions for rotating spheres. Somehow I haven't gotten to the point where I've instantiated a moving sphere, cause I expected 
-# the line plaents EXLUSIVELY to be my problem chlidren.
 
 # Drawing a lineplanet on top of a planet. I think we're ready.
 #   Actually, we've been ready with static planets, but now, we can do it with rotation.
 #   Make sure the sphere and line planets share a center, then, the rotation method should do the trick.
 
-# Bottom of screen aligns to biggest gravity influence
-# You can go into smallbody logic and run code if the current instance is a player.
-# Do that, to pump out the list of gravitational pulls (magnitude and direction both needed) to some sort of list attribute
-# In render, create a method that makes a weighted average
-# and submits the angle to the master rotate
-
 
 # Physics engine level developments
-
-# Develop a landing mode for player - for it to have a bottom orientation whenever it collides, and for it to then have:
-#   - no elasticity
-#   - really strong friction
-#       - or perhaps some method of engaging in pure corotation with the planet body
-#       - This happened in my rotationPath development. Early on, I tried directly setting the player rotation velocity to negative planet rotation velocity
-#       - And while it produced the most stable effect, it did prevent the player thrust rotation from really doing anything.
-#       - That wasn't going to cut it then, but could that be a desirable result now?
-
-# Entity culling for rendering at certain distance(all things have pos attribute)
-# Perhaps entity culling for gravity as well
-
-
 
 # Entirely new mechanisms
 #   Gravity hand!!!!!
@@ -206,32 +189,36 @@ class Motion(): # Specific handlers for my motion (mostly conversion from tuples
     def invert(self, thing1):
         return [comp * -1 for comp in thing1]
 
+    def getPosAboutCenter(self, centerPos, radialDist, theta):
+        radialPosVector = (radialDist, 0)
+        return vector.add(centerPos, vector.rotate(radialPosVector, theta))
+    
 motion = Motion()
 
 # === CLASSES: DEBUG DRAWN OBJECTS ===
 
 # A drawn object
 class Helperball():
-    Instances = []
+    Instances = set()
     def __init__(self, centerPos, size, color = 'black'):
         self.centerPos = centerPos
         self.size = size
         self.color = color
 
-        Helperball.Instances.append(self)
+        Helperball.Instances.add(self)
     
     def draw(self, app):
         drawCircle(*render.getCoords(self.centerPos), render.getScale(self.size), fill = self.color)
 
 class Helperline():
-    Instances = []
+    Instances = set()
     def __init__(self, startPos, endPos, thickness, color = 'black'):
         self.startPos = startPos
         self.endPos = endPos
         self.color = color
         self.thickness = thickness
 
-        Helperline.Instances.append(self)
+        Helperline.Instances.add(self)
 
     def setPos(self, startPos, endPos):
         self.startPos = startPos
@@ -242,11 +229,155 @@ class Helperline():
 
 # === CLASSES: SIMULATION SUPPORT ===
 
+class FadingScreentext():
+    def __init__(self, app, contents:str, pos, size:int, 
+                 color = 'white', initiallyOn:bool = True, 
+                 align:str = 'center', 
+                 opacityDropRate:float = 0.07, opacityGrowthRate:float = 0.1):
+        self.contents = contents
+        self.x, self.y = pos
+        self.size = size
+        self.fill = color
+        self.align = align
+        
+        self.opacity = 100 if initiallyOn else 0
+        self.desiredOpacity = 100 if initiallyOn else 0
+        self.opacityDropRate = opacityDropRate
+        self.opacityGrowthRate = opacityGrowthRate
+
+    def turnOn(self):
+        self.desiredOpacity = 100
+
+    def turnOff(self):
+        self.desiredOpacity = 0
+
+    def step(self):
+        deltaOpacity = self.desiredOpacity - self.opacity
+        percentChangeRate = self.opacityGrowthRate if deltaOpacity > 0 else self.opacityDropRate
+        # Our minimum viable opacity shift is the one, for one percentage point. If the change is less than that, it fully snaps over.
+        opacityShift = deltaOpacity * percentChangeRate if abs(deltaOpacity) > 1 else deltaOpacity
+        self.opacity += opacityShift
+
+    def draw(self, app):
+        drawLabel(self.contents, self.x, self.y, size = self.size, fill = self.fill, opacity = self.opacity, align = self.align)
+
+class Screenhandler():
+    def __init__(self, app):
+        print("app width is", app.width)
+        self.width = 1600
+        self.height = 1200
+        self.startTexts = {
+            # Top
+            FadingScreentext(app, 'Welcome to Spacefruit!', (self.width // 2, 160), 60, 'orchid', False, 'center', 0.01),
+            FadingScreentext(app, 'Enjoy the space.', (self.width // 2, 220), 30, 'mediumOrchid', False, 'center', 0.04),
+            FadingScreentext(app, 'And maybe, the fruit.', (self.width // 2, 260), 20, 'mediumPurple', False, 'center', 0.04),
+            FadingScreentext(app, 'Alex Werth, 15-112 N25', (self.width // 2, 320), 30, 'mediumSlateBlue', False, 'center', 0.04),
+
+            # Left block
+            FadingScreentext(app, 'Controls:', (50, 400), 40, 'orchid', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[W] [S]', (50, 450), 30, 'gold', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'for upwards and downwards thrust', (150, 450), 30, 'lavender', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[A] [D]', (50, 500), 30, 'gold', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'for spinning left and right', (150, 500), 30, 'lavender', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[Up] [Down]', (50, 550), 30, 'gold', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'for zooming in and out', (230, 550), 30, 'lavender', False, 'left', 0.05, 0.03),
+
+            FadingScreentext(app, '[Enter]', (50, 650), 30, 'orchid', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'to exit this screen and begin!', (150, 650), 30, 'lavender', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[p]', (50, 700), 30, 'mediumPurple', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'to pause during the game', (90, 700), 30, 'lavender', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[r]', (50, 750), 30, 'mediumSlateBlue', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'to teleport home', (90, 750), 30, 'lavender', False, 'left', 0.05, 0.03),
+
+            # Right block
+            FadingScreentext(app, 'Guide:', (1550, 400), 40, 'gold', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, 'The purple arrows indicate gravitational bodies.', (1550, 450), 30, 'orchid', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, 'The gold arrow shows your velocity.', (1550, 500), 30, 'gold', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, 'Hit planets to collide with them,', (1550, 550), 30, 'lavender', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, 'and land on your bottom side to land on them.', (1550, 600), 30, 'lavender', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, 'Find and collect fruit to bring home!', (1550, 650), 30, 'lavender', False, 'right', 0.05, 0.03),
+
+            FadingScreentext(app, 'Zoom out to, generally, run more smoothly.', (1550, 690), 20, 'mediumOrchid', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, 'Pardon the jitters of your thrust sprites.', (1550, 720), 20, 'mediumPurple', False, 'right', 0.05, 0.03)
+        }
+
+        self.pauseTexts = {
+            FadingScreentext(app, 'PAUSED', [50, 200], 80, 'lavender', False, 'left'),
+
+            # Left block
+            FadingScreentext(app, 'Controls:', (50, 400), 40, 'orchid', False, 'left'),
+            FadingScreentext(app, '[W] [S]', (50, 450), 30, 'gold', False, 'left'),
+            FadingScreentext(app, 'for upwards and downwards thrust', (150, 450), 30, 'lavender', False, 'left'),
+            FadingScreentext(app, '[A] [D]', (50, 500), 30, 'gold', False, 'left'),
+            FadingScreentext(app, 'for spinning left and right', (150, 500), 30, 'lavender', False, 'left'),
+            FadingScreentext(app, '[Up] [Down]', (50, 550), 30, 'gold', False, 'left'),
+            FadingScreentext(app, 'for zooming in and out', (230, 550), 30, 'lavender', False, 'left'),
+
+            FadingScreentext(app, '[p]', (50, 650), 30, 'mediumPurple', False, 'left'),
+            FadingScreentext(app, 'to pause during the game', (90, 650), 30, 'lavender', False, 'left'),
+            FadingScreentext(app, '[r]', (50, 700), 30, 'mediumSlateBlue', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'to teleport home', (90, 700), 30, 'lavender', False, 'left', 0.05, 0.03),
+        }
+
+    def drawPaused(self, app):
+        drawRect(0, 0, app.width, app.height, fill = 'black', opacity = 50)
+            
+    def drawStart(self, app):
+        pass
+
+    def draw(self, app):
+        if app.gameStatus == 'start':
+            self.drawStart(app)
+        elif app.gameStatus == 'paused':
+            self.drawPaused(app)
+
+        for text in self.startTexts | self.pauseTexts:
+            text.draw(app)
+
+    # Starting methods
+    def setStart(self, app):
+        for text in self.startTexts:
+            text.turnOn()
+        for text in self.pauseTexts:
+            text.turnOff()
+        app.gameStatus = 'start'
+    
+    def setGame(self, app):
+        for text in self.startTexts:
+            text.turnOff()
+        for text in self.pauseTexts:
+            text.turnOff()
+        app.gameStatus = 'game'
+
+    def setPause(self, app):
+        for text in self.pauseTexts:
+            text.turnOn()
+        app.gameStatus = 'paused'
+        
+    # Step
+    def step(self):
+        # Step normally, allowing text to transition among opacity
+        for text in self.startTexts | self.pauseTexts:
+            text.step()
+
+        # Cull start text, it is never intended to reappear
+        textToRemove = set()
+        for text in self.startTexts:
+            if text.opacity == 0 and text.desiredOpacity == 0:
+                textToRemove.add(text)
+        
+        # Not allowed to modify length of set during iteration, so we hand off to a kill buffer that then wipes it out for us
+        for killText in textToRemove:
+            self.startTexts.remove(killText)
+        textToRemove.clear()
+    
+screenHandler = Screenhandler(app)
+
 # === CLASSES: GAME OBJECTS ===
 
 # SmallBodies: A small object that collides with planets
 class SmallBody():
-    Instances = []
+    Instances = set()
 
     def __init__(self, pos, vel, size, mass):
         self.pos = pos
@@ -254,7 +385,7 @@ class SmallBody():
         self.size = size
         self.mass = mass
 
-        SmallBody.Instances.append(self)
+        SmallBody.Instances.add(self)
 
         self.constants = {
             'minimumLinearSpeed': 0,
@@ -300,12 +431,18 @@ class SmallBody():
         return fNetx, fNety
 
     def getAllPlanetGravity(self, app):
+        if isinstance(self, Player):
+            player.gravitationalPulls = set()
+
         fGx, fGy = 0, 0
         for thisPlanet in Planet.Instances:
             # Get distance vector to planet
             dxPlanet, dyPlanet = thisPlanet.pos[0] - self.pos[0], thisPlanet.pos[1] - self.pos[1]
             # Crunch newtonian gravity: gmM / r^2
             fGThisPlanet = ( app.bigG * self.mass * thisPlanet.mass ) / (dxPlanet ** 2 + dyPlanet ** 2)
+
+            gravityInfo = (dxPlanet, dyPlanet, fGThisPlanet)
+            player.gravitationalPulls.add(gravityInfo)
     
             xHat, yHat = vector.unit((dxPlanet, dyPlanet))
             fGx += fGThisPlanet * xHat
@@ -330,28 +467,24 @@ class SmallBody():
 
     # Planet Collision
     def collide(self):
+        self.setPlayerColliding(False)
         self.collideWithSpheres()
         self.collideWithLines()
+        self.collideWithBlackHoles()
 
-    def collideWithSpheres(self):
-        colliding = False
+    def collideWithSpheres(self):      
         for thisPlanet in SpherePlanet.Instances:
             # Test if we are within the collision circle, thus, colliding with the body
             if vector.distance(self.pos, thisPlanet.pos) <= self.size + thisPlanet.size:
                 normal = thisPlanet.getNormalVectorTo(self.pos) # unit normal vector
                 depth = vector.distance(self.pos, thisPlanet.pos) - (self.size + thisPlanet.size)
 
+                self.setPlayerColliding(True)
                 self.setPlayerLanding(thisPlanet, normal)
                 self.evaluatePlanetCollision(thisPlanet, normal, depth)
                 self.moveWithRotatingPlanet(thisPlanet)
-
-                colliding = True
-        
-        if not colliding:
-            player.landing = False
                 
     def collideWithLines(self):
-        colliding = False
         for thisPlanet in LinePlanet.Instances:
             # Don't bother calculating unless we're in the relevant range to begin
             if vector.distance(self.pos, thisPlanet.pos) <= thisPlanet.getCollisionCheckRadius():
@@ -360,14 +493,10 @@ class SmallBody():
                 if collisionResult != False:
                     normal, trueDepth = collisionResult
 
+                    self.setPlayerColliding(True)
                     self.setPlayerLanding(thisPlanet, normal)
                     self.evaluatePlanetCollision(thisPlanet, normal, trueDepth)
                     self.moveWithRotatingPlanet(thisPlanet)
-
-                    colliding = True
-        
-        if not colliding:
-            player.landing = False
 
     def moveWithRotatingPlanet(self, collidingPlanet):
         assert(isinstance(collidingPlanet, Planet))
@@ -474,25 +603,33 @@ class SmallBody():
             ]
 
             self.vel = injectPlanetMotion(recombinedVel, collidingPlanet)
-
+    
+    def collideWithBlackHoles(self):
+        for thisHole in BlackHole.Instances:
+            thisHole.checkAndTeleport(self) # Internally handled
+            
     # Player Landing
     def setPlayerLanding(self, collidingPlanet, normal):
         # Only eval for player!!!
         if isinstance(self, Player):
-            # I've had to play with some things
-            
-            # Normal angle appears to be flipped 180 from what I want, not sure why, so I added the negative.
-            normalAngle = (-math.degrees(math.atan2(normal[1], normal[0])) ) % 360
+            if player.colliding:
+                # I've had to play with some things
+                
+                # Normal angle appears to be flipped 180 from what I want, not sure why, so I added the negative.
+                normalAngle = (-math.degrees(math.atan2(normal[1], normal[0])) ) % 360
 
-            # I add a quarter turn to the player because their default angle is, I suppose, 0 in positive x, and I'd like this to represent
-            #   angle from their vertical (to make them upright)
-            playerAngle = (player.pos[2] - 90) % 360
-            
-            isLanding = abs(normalAngle - playerAngle) <= player.landingConstants['fieldOfLandingAngle']
+                # I add a quarter turn to the player because their default angle is, I suppose, 0 in positive x, and I'd like this to represent
+                #   angle from their vertical (to make them upright)
+                playerAngle = (player.pos[2] - 90) % 360
+                
+                isLanding = abs(normalAngle - playerAngle) <= player.landingConstants['fieldOfLandingAngle']
+                player.landing = isLanding
+            else:
+                player.landing = False
 
-            player.landing = isLanding
-
-            
+    def setPlayerColliding(self, value:bool):
+        if isinstance(self, Player):
+            player.colliding = value
             
     # Rendering
     def draw(self, app):
@@ -505,6 +642,11 @@ class SmallBody():
         self.takePhysicsStep(app)
 
 class Player(SmallBody):
+
+    # === # === # === # === #
+    # PLAYER SPECIFIC OPERATIONS
+    # === # === # === # === #
+
     def __init__(self, pos, vel, size, mass):
         super().__init__(pos, vel, size, mass)
         self.thrust = [0, 0]
@@ -513,14 +655,15 @@ class Player(SmallBody):
         self.boostMax = 100
         self.boostRefillRate = 1
 
+        self.colliding = False
         self.landing = False
         
         self.ticksPerSprite = 2 # Self explanatory. 1 makes the fire sprite change each frame, increase for less frequency.
         self.thrustSpriteIndex = 0
 
         self.thrustConstants = {
-            'thrustForce': 5,
-            'rollForce': 2,
+            'thrustForce': 30,
+            'rollForce': 5,
             'boostMult': 2
         }
 
@@ -539,6 +682,7 @@ class Player(SmallBody):
         }
 
         self.defineSpecialtyTrackingVariables()
+        self.initializeBackground()
   
     # Key inputs
     def thrustKeysPressed(self, key):
@@ -556,19 +700,21 @@ class Player(SmallBody):
                 ( int('d' in setKeys) - int('a' in setKeys) ) * self.thrustConstants['rollForce']
             ]
             player.thrustSpriteIndex = (player.thrustSpriteIndex + 1) % (4 * self.ticksPerSprite)
+            player.landing = False
     
     def thrustKeysReleased(self):
         player.thrust = [0, 0]
 
     def generalKeysPressed(self, app, key):
-       pass
+       if key == 'r':
+           self.returnToLazula()
     
     def generalKeysHeld(self, app, keyList):
         render.scaleChangeDirection = int('up' in keyList) - int('down' in keyList)
 
     def generalKeysReleased(self, app, key):
         render.scaleChangeDirection = 0
-    
+
     # Boost thrust
     def getBoost(self):
         return self.boostMeter
@@ -614,12 +760,21 @@ class Player(SmallBody):
             if abs(self.vel[2]) < self.constants['minimumRotationalSpeed']:
                 self.vel[2] = 0
 
+    # Emergency home teleport
+    def returnToLazula(self):
+        print(LazulaVine.pos[2])
+        desiredPos = motion.getPosAboutCenter(LazulaVine.pos, LazulaVine.size + self.size, LazulaVine.pos[2] + 90)
+        self.pos = [desiredPos[0], desiredPos[1], -LazulaVine.pos[2]]
+        self.vel = LazulaVine.vel.copy()
+
     # Stepping
     def step(self, app):
         self.stepBoost()
         self.collide()
         self.takePhysicsStep(app)
+
         self.stepSpecialtyTrackingVariables()
+        self.stepBackground()
     
     # Rendering
     def getFlamesThatShouldBeDrawn(self):
@@ -637,7 +792,7 @@ class Player(SmallBody):
         mainSprite = "assets/player/player_base.png"
 
         rawWidth, rawHeight = getImageSize(mainSprite) # ought to be 500 x 500
-        playerScaleFactor = self.size * 0.001
+        playerScaleFactor = self.size * 0.001 # sprite is fricken huge
         realWidth, realHeight = render.getScale(rawWidth * playerScaleFactor), render.getScale(rawHeight * playerScaleFactor)
 
         # Drawing possible thrust directions
@@ -656,7 +811,7 @@ class Player(SmallBody):
                   width = realWidth, height = realHeight, align = 'center')
         
         # Drawing two types of landing legs
-
+        
         landingCondition = 'open' if self.landing else 'closed'
         landingSprite = f"assets/player/player_landing_{landingCondition}.png"
 
@@ -665,8 +820,12 @@ class Player(SmallBody):
                   width = realWidth, height = realHeight, align = 'center')
         
         # Other bonuses
-        self.drawVelocityIndicator()
+        self.drawSpecialty()
     
+    # === # === # === # === #
+    # PLAYER VISUAL INTERFACE METHODS
+    # === # === # === # === #
+
     # Bonus draw behaviors
     def defineSpecialtyTrackingVariables(self):
         # Sprite index
@@ -677,8 +836,10 @@ class Player(SmallBody):
         self.velOpacity = 0
         self.targetVelOpacity = 0
 
-    def stepSpecialtyTrackingVariables(self):
+        # Gravity Collection
+        self.gravitationalPulls = set()
 
+    def stepSpecialtyTrackingVariables(self):
         # VELOCITY INDICATOR
 
         # PID-style change handling
@@ -693,6 +854,11 @@ class Player(SmallBody):
         opacityShift = deltaOpacity * percentChange if abs(deltaOpacity) > 1 else deltaOpacity
         self.velOpacity += opacityShift
 
+    def drawSpecialty(self):
+        self.drawVelocityIndicator()
+        self.drawGravityIndicators()
+
+    # Line + arrow indicators
     def drawVelocityIndicator(self):
         # Draw a line
         velocityLineStartRadius = self.size * 1.5
@@ -750,8 +916,90 @@ class Player(SmallBody):
             opacity = self.velOpacity
         )
 
+    def drawGravityIndicators(self):
+        planetLineStartRadius = self.size * 2
+        planetLineLengthMultiplier = 8
+        planetLineOpacityMultiplier = 10
+
+        # Custom color
+        color = gradient('royalBlue', 'darkOrchid', start='center')
+
+        # GET GRAVITY FROM CUSTOM LIST CREATED WITHIN SMALLBODY GRAVITATION METHOD
+        for gravityInstance in player.gravitationalPulls: 
+            planetVector = gravityInstance[:2]
+            planetDirection = vector.unit(planetVector)
+            #planetDistance = vector.len(planetVector)
+            gravityForce = gravityInstance[2]
+            
+            gravityLineStart = render.getCoords(
+                vector.add(
+                    player.pos, 
+                    vector.scale(planetDirection, planetLineStartRadius)
+                )
+            )
+            # Extend it outwards from the *starting point. Must redo the calculations, as they've already been passed through render.
+            gravityLineEnd = render.getCoords(
+                vector.add(
+                    vector.add(player.pos, vector.scale(planetDirection, planetLineStartRadius) ),
+                    vector.scale(planetDirection, gravityForce * planetLineLengthMultiplier)
+                )
+            )
+
+            opacity = int(min(100, max(25, gravityForce * planetLineOpacityMultiplier)))
+
+            drawLine(
+                *gravityLineStart, *gravityLineEnd,
+                lineWidth = render.getScale(4),
+                fill = color, arrowEnd = True,
+                opacity = opacity
+            )
+
+    # === # === # === # === #
+    # BACKGROUND VISUALIZATION
+    # === # === # === # === #
+
+    def setPos(self, pos): # Helpful method so that background is moved with the player properly
+        self.pos = pos
+        self.initializeBackground()
+
+    def initializeBackground(self):
+        self.bgPos = self.getBackgroundPosition()
+        self.bgVel = self.getBackgroundVelocity()
+
+    def getBackgroundPosition(self):
+        return [self.pos[0], self.pos[1], 0]
+
+    def getBackgroundVelocity(self):
+        bgParallax = 0.9
+        return vector.scale(self.vel, bgParallax)
+    
+    def getBackgroundSize(self, size):
+        return size / render.scale
+    
+    def stepBackground(self):
+        self.bgVel = self.getBackgroundVelocity()
+        motion.plusEq(self.bgPos, self.bgVel, True)
+
+    def drawBackground(self, app):
+        parallax = 0.25
+        imagePath = 'assets/visuals/Background.jpeg'
+        imageWidth, imageHeight = getImageSize(imagePath)
+
+        # Last multiplication is to make it not be smaller than the max screen
+        customScale = (((render.scale - 1) * parallax) + 1) * 2
+
+        drawImage(imagePath, app.width / 2, app.height / 2, align = 'center',
+                  width = imageWidth * customScale, height = imageHeight * customScale,
+                  rotateAngle = -player.pos[2] )
+        #drawCircle(*render.getCoords(self.bgPos), 
+        #           self.getBackgroundSize(2000),
+        #           #render.getScale(self.getBackgroundSize(200)),
+        #           #5,
+        #           rotateAngle = render.getAngle(self.bgPos),
+        #           fill = gradient('indigo', 'black'))
 
 class Fruit(SmallBody):
+    Instances = set()
     def __init__(self, pos, vel, type, customSize = None, customMass = None):
         super().__init__(pos, vel)
         
@@ -792,17 +1040,29 @@ class Fruit(SmallBody):
                 'Flavortext':"Small and sweet. The pit appears to be, somehow, a piece of a satellite."
             },
         }
-        
-        thisFruitType = typeDict[type]
-        self.name = thisFruitType['Name']
-        self.size = thisFruitType['Size'] if customSize == None else customSize
-        self.mass = thisFruitType['Mass'] if customMass == None else customMass
 
-player = Player([0, 0, 0], [0, 0, 0], 50, 50)
+        self.type = type
+        thisFruitInfo = typeDict[self.type]
+        self.name = thisFruitInfo['Name']
+        self.size = thisFruitInfo['Size'] if customSize == None else customSize
+        self.mass = thisFruitInfo['Mass'] if customMass == None else customMass
+
+    def draw(self, app):
+        if self.thisFruitInfo['Image'][0] == 'Circle':
+            fillColor = self.thisFruitInfo['Image'][1]
+            drawCircle(*render.getCoords(self.pos), render.getScale(self.size), 
+                       #rotateAngle = render.getAngle(self.pos),
+                       fill = fillColor)
+        else:
+            drawCircle(*render.getCoords(self.pos), render.getScale(self.size), 
+                       #rotateAngle = render.getAngle(self.pos),
+                       fill = 'darkCyan')
+
+player = Player([0, 0, 0], [0, 0, 0], 50, 100)
 
 # Planets: A big object that can move around in the world
 class Planet():
-    Instances = []
+    Instances = set()
     def __init__(self, pos, vel, mass):
         self.pos = pos
         self.vel = vel
@@ -814,7 +1074,7 @@ class Planet():
         if len(self.vel) < 3:
             self.vel = [ self.vel[0], self.vel[1], 0 ]
 
-        Planet.Instances.append(self)
+        Planet.Instances.add(self)
     
     def __repr__(self):
         return f"Planet, default (s={self.pos}, v={self.vel}, m={self.mass})"
@@ -847,7 +1107,7 @@ class Planet():
         self.vel[2] = newVelocity
 
 class SpherePlanet(Planet):
-    Instances = []
+    Instances = set()
     def __init__(self, pos, vel, size, mass, image = None):
         super().__init__(pos, vel, mass)
         # Calling super_init has the added benefit of appending it to the superclass's instance list
@@ -855,7 +1115,7 @@ class SpherePlanet(Planet):
         self.size = size
         self.image = image
 
-        SpherePlanet.Instances.append(self)
+        SpherePlanet.Instances.add(self)
 
     def __repr__(self):
         return f"Planet, sphere (s={self.pos}, v={self.vel}, m={self.mass}, r={self.size})"
@@ -872,22 +1132,9 @@ class SpherePlanet(Planet):
                     rotateAngle = render.getAngle(self.pos),
                     fill = None,
                     border = 'red', borderWidth = render.getScale(2))
-        
-        drawStar(*render.getCoords(self.pos), 
-                    render.getScale(self.size * 0.8), 
-                    3,
-                    rotateAngle = render.getAngle(self.pos),
-                    fill = None,
-                    border = 'red', borderWidth = render.getScale(2))
-        drawStar(*render.getCoords(self.pos), 
-                    render.getScale(self.size * 0.8), 
-                    5,
-                    rotateAngle = render.getAngle(self.pos),
-                    fill = None,
-                    border = 'red', borderWidth = render.getScale(2))
 
 class LinePlanet(Planet):
-    Instances = []
+    Instances = set()
     def __init__(self, centerPos, vel, mass, mesh, image = None):
         super().__init__(centerPos, vel, mass)
         # Wind the mesh counterclockwise
@@ -897,7 +1144,7 @@ class LinePlanet(Planet):
         self.image = image
         self.setCollisionCheckRadius()
 
-        LinePlanet.Instances.append(self)
+        LinePlanet.Instances.add(self)
 
     def __repr__(self):
         return f"Planet, line (s={self.pos}, v={self.vel}, m={self.mass})"
@@ -1114,23 +1361,50 @@ class LinePlanet(Planet):
             drawLine(*lineStart, *lineEnd, fill = 'red', lineWidth = render.getScale(2))
 
 class NonCollisionPlanet(Planet):
-    Instances = []
+    Instances = set()
     def __init__(self, pos, vel, size, mass, image = None):
         super().__init__(pos, vel, mass)
         self.size = size
         self.image = image
 
-        NonCollisionPlanet.Instances.append(self)
+        NonCollisionPlanet.Instances.add(self)
     
-    def isInside(self, point):
-        return vector.distance(point, self.pos) <= self.size
+    def draw(self, app):
+        pass
+
+class BlackHole(Planet):
+    Instances = set()
+    def __init__(self, pos, vel, size, mass, teleportThresholdSize, pairedWhiteHole:NonCollisionPlanet, image = None):
+        super().__init__(pos, vel, mass)
+        self.size = size
+        self.image = image
+
+        self.teleportThresholdSize = teleportThresholdSize
+
+        self.pairedWhiteHole = pairedWhiteHole
+
+        BlackHole.Instances.add(self)
     
+    def isInsideEventHorizon(self, testPos):
+        return vector.distance(self.pos, testPos) <= self.teleportThresholdSize
+
+    def checkAndTeleport(self, other:SmallBody):
+        if self.isInsideEventHorizon(other.pos):
+            destinationPos = motion.getPosAboutCenter(self.pairedWhiteHole.pos, self.pairedWhiteHole.size, randrange(0, 359))
+            newTheta = randrange(0, 359)
+            other.pos = [destinationPos[0], destinationPos[1], newTheta] # Spit them out
+            other.vel = list(vector.add2to3(other.vel, vector.scale(other.vel, -0.5))) # Just to dampen the blow
+
     def draw(self, app):
         drawCircle(*render.getCoords(self.pos), 
                     render.getScale(self.size), 
                     rotateAngle = render.getAngle(self.pos),
-                    fill = None,
-                    border = 'black', borderWidth = render.getScale(2))
+                    fill = 'black',
+                    border = 'gold', borderWidth = render.getScale(2))
+
+# Spawners
+class FruitSpawner():
+    pass
 
 # === CLASSES: MOVEMENT CONTROLLERS ===
 
@@ -1141,7 +1415,7 @@ class Path():
         planetToInitialize.setVel([0, 0, 0])
 
 class OrbitPath():
-    Instances = []
+    Instances = set()
     def __init__(self, adoptedPlanet):
         assert(isinstance(adoptedPlanet, Planet))
         self.pathedPlanet = adoptedPlanet
@@ -1149,7 +1423,7 @@ class OrbitPath():
         self.orbitT = 0 # Increases evenly up to 360
         self.maxT = 360
 
-        OrbitPath.Instances.append(self)
+        OrbitPath.Instances.add(self)
     
     # Object definition
 
@@ -1206,7 +1480,7 @@ class OrbitPath():
         self.pathedPlanet.setLinearVel(currentWorldOrbitVel)
     
 class RotatingPath():
-    Instances = []
+    Instances = set()
     def __init__(self, adoptedPlanet):
         assert(isinstance(adoptedPlanet, Planet))
         self.pathedPlanet = adoptedPlanet
@@ -1215,7 +1489,7 @@ class RotatingPath():
         self.maxT = 360
         # In this system, rotationT corresponds 1-1 from path theta to planet rotation
 
-        RotatingPath.Instances.append(self)
+        RotatingPath.Instances.add(self)
     
     # Object definition
     
@@ -1242,14 +1516,11 @@ class RotatingPath():
         self.pathedPlanet.setRotationPos(self.rotationT)
         self.pathedPlanet.setRotationVel(self.speed)
 
-
 # === GAME OBJECT INSTANCING ===
 
 # ALL (CORE) POSITION & VELOCITY VECTORS ARE ARE LISTS NOW
 # WE LOVE MUTABILITY
 # frankly there should be an additional kind of data type, with a set number of slots but is perfectly able to change data within them
-
-debugMesh = [(100, 100), (-100, 100), (-100, -100), (100, -100)]
 
 somberHeartMesh = [
         (300, 300), # top inner lip
@@ -1260,7 +1531,10 @@ somberHeartMesh = [
         (0, -400), (-300, -250), (-400, 0), (-300, 250), (0, 400) # interior
     ]
 
-SomberHeart = LinePlanet([0, 0], [0, 0], 10000, somberHeartMesh)
+SomberHeart = LinePlanet([0, 0], [0, 0], 0, somberHeartMesh)
+
+SomberOutlet = NonCollisionPlanet([0, 0], [0, 0], 20, 0) # I want to try negative mass so badly
+SomberCore = BlackHole([0, 0], [0, 0], 150, 12000, 150, SomberOutlet)
 
 RubyCore = NonCollisionPlanet([0, 0], [0, 0], 15, 0)
 
@@ -1274,10 +1548,9 @@ SapphireBrambleOne = SpherePlanet([0, 0], [0, 0], 150, 500)
 SapphireBrambleTwo = SpherePlanet([0, 0], [0, 0], 150, 500)
 SapphireBrambleThree = SpherePlanet([0, 0], [0, 0], 150, 500)
 
+LazulaVine = SpherePlanet([0, 0], [0, 0], 500, 1250)
 
-
-
-player.pos = [1000, 1000, 1000]
+player.setPos([10000, 500, 0]) # Positioned by hand on top of Lazula Vine
 
 centerOfTheUniverse = Helperball([0, 0], 50, 'black')
 
@@ -1337,6 +1610,17 @@ sapphireTwoSpin = RotatingPath(SapphireBrambleTwo)
 sapphireTwoSpin.defineRotation(brambleBallSpeed)
 sapphireThreeSpin = RotatingPath(SapphireBrambleThree)
 sapphireThreeSpin.defineRotation(brambleBallSpeed)
+
+# Lazula Vine
+lazulaOrbit = OrbitPath(LazulaVine)
+lazulaOrbit.defineOrbit((0, 0), 10000, 0.01, 0)
+
+lazulaSpin = RotatingPath(LazulaVine)
+lazulaSpin.defineRotation(5, 0)
+
+# Lazula's weirdest moon, Somber Outlet
+outletOrbit = OrbitPath(SomberOutlet)
+outletOrbit.defineOrbit(LazulaVine, 500, -1)
 
 # === CLASSES: RENDERING ===
 
@@ -1429,18 +1713,39 @@ class Render():
     # MOUSE HANDLING
     #def save
 
+class UnRender():
+    def getWorldCoords(self, screenCoordinate):
+
+        def unScreenshift(xScreen, yScreen):
+            return xScreen - render.renderOrigin[0], -yScreen + render.renderOrigin[1]
+        def unScale(xScaled, yScaled):
+            return xScaled / self.scale, yScaled / self.scale
+        def unRotate(xRotated, yRotated):
+            theta = math.radians(player.pos[2] + render.globalAngleAdjustment) * -1 
+            unRotatedX = math.cos(theta) * xRotated - math.sin(theta) * yRotated
+            unRotatedY = math.sin(theta) * xRotated + math.cos(theta) * yRotated
+            return unRotatedX, unRotatedY
+        def unTranslate(xMoved, yMoved):
+            return xMoved + player.pos[0], yMoved + player.pos[1]
+        
+        xScreen, yScreen = screenCoordinate[0], screenCoordinate[1]
+        return unTranslate(unRotate(unScale(unScreenshift(xScreen, yScreen))))
+
 render = Render(app)
+
+unrender = UnRender()
 
 # === EVENT HANDLING ===
 
 # STEP
 
 def onStep(app):
-    if not app.paused:
+    screenHandler.step()
+    if app.gameStatus != 'paused':
         takeStep(app)
 
 def takeStep(app):
-    for path in OrbitPath.Instances + RotatingPath.Instances:
+    for path in OrbitPath.Instances | RotatingPath.Instances:
         path.step()
 
     for body in SmallBody.Instances:
@@ -1455,26 +1760,40 @@ def takeStep(app):
 # KEY INPUT
 
 def onKeyPress(app, key):
-    player.thrustKeysPressed(key)
-    player.generalKeysPressed(app, key)
+    if app.gameStatus == 'game':
+        player.thrustKeysPressed(key)
+        player.generalKeysPressed(app, key)
 
-    if key == 'p':
-        app.paused = not app.paused
-    if app.paused and key == 'o':
-        takeStep(app)
+    if app.gameStatus == 'start' and key == 'enter': # Begin with enter at the beginning
+        screenHandler.setGame(app)
+    
+    if key == 'p': # Toggle game and paused with p
+        if app.gameStatus == 'game':
+            screenHandler.setPause(app)
+        elif app.gameStatus == 'paused':
+            screenHandler.setGame(app)
 
 def onKeyHold(app, key):
-    player.thrustKeysHeld(key)
-    player.generalKeysHeld(app, key)
+    if app.gameStatus == 'game':
+        player.thrustKeysHeld(key)
+        player.generalKeysHeld(app, key)
 
 def onKeyRelease(app, key):
-    player.thrustKeysReleased()
-    player.generalKeysReleased(app, key)
+    if app.gameStatus == 'game':
+        player.thrustKeysReleased()
+        player.generalKeysReleased(app, key)
+
+# MOUSE CONTROL
+
+def onMouseMove(app, mouseX, mouseY):
+    pass
 
 # DRAWING
 
 def redrawAll(app): 
     render.setRenderOrigin(app)
+
+    player.drawBackground(app)
 
     # Game objects
     for objectClass in [SmallBody, Planet]:
@@ -1483,32 +1802,11 @@ def redrawAll(app):
 
     # Player specific cool visuals
 
+    screenHandler.draw(app)
+
+
     if not app.debugPrint: # Threshold beyond which all is debug material
         return
-    
-    # Debug objects
-    for objectClass in [Helperball, Helperline]:
-        for instance in objectClass.Instances:
-            instance.draw(app)
-    
-    #Planet centerlines
-    for thisPlanet in Planet.Instances:
-        playerCoords = render.getCoords(player.pos)
-        planetCoords = render.getCoords(thisPlanet.pos)
-        drawLine(*playerCoords, *planetCoords, fill = 'blue')
-
-    drawLabel(f"Thrust: {player.thrust}", 100, 30, align = 'left')
-    xThrust = math.sin(math.radians(player.pos[2]))
-    yThrust = math.cos(math.radians(player.pos[2]))
-    drawLabel(f"Angle Components: {xThrust}, {yThrust}", 100, 110, align = 'left')
-
-    drawLabel(f"Speed: {player.vel}", 100, 50, align = 'left')
-    trueSpeed = mymath.hypotenuse(player.vel[0], player.vel[1])
-    drawLabel(f"Absolute Speed:{trueSpeed}", 100, 70, align = 'left')
-
-    drawLabel(f"Pos: {player.pos}", 100, 90, align = 'left')
-
-    drawLabel(f"Scale: {render.scale}", 100, 130, align = 'left')
 
 # === APP INITIALIZATION ===
 
@@ -1530,17 +1828,15 @@ def onAppStart(app):
     RotatingPath.initalize()
     OrbitPath.initalize()
     # Game state
-    app.stepsPerSecond = 30
-    app.paused = False
-    app.bigG = 2
-    app.debugPrint = True
+    screenHandler.setStart(app)
 
-    app.i = 0
+    app.stepsPerSecond = 30
+    app.bigG = 20
+    app.debugPrint = False
 
 # === MAIN ===
 
 def main():
-    scale = 600
-    runApp(width = scale, height = scale)
+    runApp(width = 1600, height = 1200)
 
 main()
