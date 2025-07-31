@@ -180,38 +180,6 @@ class Motion(): # Specific handlers for my motion (mostly conversion from tuples
     
 motion = Motion()
 
-# === CLASSES: DEBUG DRAWN OBJECTS ===
-
-# A drawn object
-class Helperball():
-    Instances = set()
-    def __init__(self, centerPos, size, color = 'black'):
-        self.centerPos = centerPos
-        self.size = size
-        self.color = color
-
-        Helperball.Instances.add(self)
-    
-    def draw(self, app):
-        drawCircle(*render.getCoords(self.centerPos), render.getScale(self.size), fill = self.color)
-
-class Helperline():
-    Instances = set()
-    def __init__(self, startPos, endPos, thickness, color = 'black'):
-        self.startPos = startPos
-        self.endPos = endPos
-        self.color = color
-        self.thickness = thickness
-
-        Helperline.Instances.add(self)
-
-    def setPos(self, startPos, endPos):
-        self.startPos = startPos
-        self.endPos = endPos
-    
-    def draw(self, app):
-        drawLine(*render.getCoords(self.startPos), *render.getCoords(self.endPos), lineWidth = render.getScale(self.thickness), fill = self.color)
-
 # === CLASSES: SIMULATION SUPPORT ===
 
 class FadingScreentext():
@@ -269,21 +237,24 @@ class Screenhandler():
 
             FadingScreentext(app, '[Enter]', (50, 650), 30, 'orchid', False, 'left', 0.05, 0.03),
             FadingScreentext(app, 'to exit this screen and begin!', (150, 650), 30, 'lavender', False, 'left', 0.05, 0.03),
-            FadingScreentext(app, '[p]', (50, 700), 30, 'mediumPurple', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[p]', (50, 700), 30, 'mediumOrchid', False, 'left', 0.05, 0.03),
             FadingScreentext(app, 'to pause during the game', (90, 700), 30, 'lavender', False, 'left', 0.05, 0.03),
-            FadingScreentext(app, '[r]', (50, 750), 30, 'mediumSlateBlue', False, 'left', 0.05, 0.03),
-            FadingScreentext(app, 'to teleport home', (90, 750), 30, 'lavender', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[f]', (50, 750), 30, 'mediumPurple', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'to launch a stored fruit', (90, 750), 30, 'lavender', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[r]', (50, 800), 30, 'mediumSlateBlue', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'to teleport home', (90, 800), 30, 'lavender', False, 'left', 0.05, 0.03),
 
             # Right block
             FadingScreentext(app, 'Guide:', (1550, 400), 40, 'gold', False, 'right', 0.05, 0.03),
             FadingScreentext(app, 'The purple arrows indicate gravitational bodies.', (1550, 450), 30, 'orchid', False, 'right', 0.05, 0.03),
             FadingScreentext(app, 'The gold arrow shows your velocity.', (1550, 500), 30, 'gold', False, 'right', 0.05, 0.03),
             FadingScreentext(app, 'Hit planets to collide with them,', (1550, 550), 30, 'lavender', False, 'right', 0.05, 0.03),
-            FadingScreentext(app, 'and land on your bottom side to land on them.', (1550, 600), 30, 'lavender', False, 'right', 0.05, 0.03),
-            FadingScreentext(app, 'Find and collect fruit to bring home!', (1550, 650), 30, 'lavender', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, 'and hit fruits to collect them.', (1550, 600), 30, 'lavender', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, 'Bring fruit to the bucket just underneath you!', (1550, 650), 30, 'lavender', False, 'right', 0.05, 0.03),
 
             FadingScreentext(app, 'Zoom out to, generally, run more smoothly.', (1550, 690), 20, 'mediumOrchid', False, 'right', 0.05, 0.03),
-            FadingScreentext(app, 'Pardon the jitters of your thrust sprites.', (1550, 720), 20, 'mediumPurple', False, 'right', 0.05, 0.03)
+            FadingScreentext(app, 'Pardon the jitters of your thrust sprites.', (1550, 720), 20, 'mediumPurple', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, "The planet sprites behave weirdly, I fear.", (1550, 750), 20, 'mediumSlateBlue', False, 'right', 0.05, 0.03)
         }
 
         self.pauseTexts = {
@@ -300,8 +271,14 @@ class Screenhandler():
 
             FadingScreentext(app, '[p]', (50, 650), 30, 'mediumPurple', False, 'left'),
             FadingScreentext(app, 'to pause during the game', (90, 650), 30, 'lavender', False, 'left'),
-            FadingScreentext(app, '[r]', (50, 700), 30, 'mediumSlateBlue', False, 'left', 0.05, 0.03),
-            FadingScreentext(app, 'to teleport home', (90, 700), 30, 'lavender', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[f]', (50, 700), 30, 'mediumPurple', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'to launch any stored fruit', (90, 700), 30, 'lavender', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, '[r]', (50, 750), 30, 'mediumSlateBlue', False, 'left', 0.05, 0.03),
+            FadingScreentext(app, 'to teleport home', (90, 750), 30, 'lavender', False, 'left', 0.05, 0.03),
+
+            # New Right Score Block
+            FadingScreentext(app, 'Score:', (1550, 400), 40, 'gold', False, 'right', 0.05, 0.03),
+            FadingScreentext(app, 'Approach the Lazula Vine bucket to see your score.', (1550, 450), 30, 'lavender', False, 'right', 0.05, 0.03),
         }
 
     def drawPaused(self, app):
@@ -355,8 +332,40 @@ class Screenhandler():
         for killText in textToRemove:
             self.startTexts.remove(killText)
         textToRemove.clear()
-    
+
 screenHandler = Screenhandler(app)
+
+# === CLASSES: DEBUG DRAWN OBJECTS ===
+
+# A drawn object
+class Helperball():
+    Instances = set()
+    def __init__(self, centerPos, size, color = 'black'):
+        self.centerPos = centerPos
+        self.size = size
+        self.color = color
+
+        Helperball.Instances.add(self)
+    
+    def draw(self, app):
+        drawCircle(*render.getCoords(self.centerPos), render.getScale(self.size), fill = self.color)
+
+class Helperline():
+    Instances = set()
+    def __init__(self, startPos, endPos, thickness, color = 'black'):
+        self.startPos = startPos
+        self.endPos = endPos
+        self.color = color
+        self.thickness = thickness
+
+        Helperline.Instances.add(self)
+
+    def setPos(self, startPos, endPos):
+        self.startPos = startPos
+        self.endPos = endPos
+    
+    def draw(self, app):
+        drawLine(*render.getCoords(self.startPos), *render.getCoords(self.endPos), lineWidth = render.getScale(self.thickness), fill = self.color)
 
 # === CLASSES: GAME OBJECTS ===
 
@@ -424,6 +433,8 @@ class SmallBody():
             # Get distance vector to planet
             dxPlanet, dyPlanet = thisPlanet.pos[0] - self.pos[0], thisPlanet.pos[1] - self.pos[1]
             # Crunch newtonian gravity: gmM / r^2
+            if dxPlanet == 0 and dyPlanet == 0:
+                continue
             fGThisPlanet = ( app.bigG * self.mass * thisPlanet.mass ) / (dxPlanet ** 2 + dyPlanet ** 2)
             
             if isinstance(self, Player):
@@ -773,7 +784,7 @@ class Player(SmallBody):
         mainSprite = "assets/player/player_base.png"
 
         rawWidth, rawHeight = getImageSize(mainSprite) # ought to be 500 x 500
-        playerScaleFactor = self.size * 0.001 # sprite is fricken huge
+        playerScaleFactor = self.size * 0.0042 # PERFECT NUMBER
         realWidth, realHeight = render.getScale(rawWidth * playerScaleFactor), render.getScale(rawHeight * playerScaleFactor)
 
         # Drawing possible thrust directions
@@ -809,9 +820,10 @@ class Player(SmallBody):
 
     # Emergency home teleport
     def returnToLazula(self):
+        # We really want the velocity to be instantly set to something normal
+        self.vel = LazulaVine.vel.copy()
         desiredPos = motion.getPosAboutCenter(LazulaVine.pos, LazulaVine.size + self.size, LazulaVine.pos[2] + 90)
         self.pos = [desiredPos[0], desiredPos[1], -LazulaVine.pos[2]]
-        self.vel = LazulaVine.vel.copy()
 
     # Fruit collection
     def initializeFruitBusiness(self):
@@ -879,6 +891,7 @@ class Player(SmallBody):
         # Our minimum viable opacity shift is the one, for one percentage point. If the change is less than that, it fully snaps over.
         opacityShift = deltaOpacity * percentChange if abs(deltaOpacity) > 1 else deltaOpacity
         self.velOpacity += opacityShift
+        self.velOpacity = min(100, max(self.velOpacity, 0))
 
     def drawSpecialty(self):
         self.drawVelocityIndicator()
@@ -1005,49 +1018,50 @@ class Fruit(SmallBody):
     # So they will all remain disparately bound up in the sets of their respective permanent spawners
 
     typeDict = {
-            'debug':{
-                'Name':'Debug Fruit',
-                'Size':20,
-                'Mass':30,
-                'Image':['Circle','orchid'],
-                'Flavortext':'Testing flavortext'
+            'grape':{
+                'Name': 'Lazulan Grapes',
+                'Size': 25,
+                'Mass': 25,
+                'Score': 1
             },
             'apple':{
-                'Name':'Red Delicious',
+                'Name':'Forgotten Honeycrisp',
+                'Size':35,
+                'Mass':40,
+                'Score':12
+            },
+            'raspberry':{
+                'Name':'Ruby Raspberry',
                 'Size':15,
-                'Mass':30,
-                'Image':['Sprite','fake apple url here'],
-                'Flavortext':"The shittiest of them all. We're taking points away from you, just for having this."
+                'Mass':15,
+                'Score':10
             },
-            'jackfruit':{
-                'Name':'Gravitational Jackfruit',
-                'Size':80,
-                'Mass':100,
-                'Image':['Sprite','evil jackfriut url here'],
-                'Flavortext':"The grand daddy. This thing will wipe out stars, if you're not careful."
+            'blackberry':{
+                'Name':'Sapphire Blackberry',
+                'Size':15,
+                'Mass':15,
+                'Score':10
             },
-            'whitepeach':{
-                'Name':'Starlight Peach',
-                'Size':25,
-                'Mass':25,
-                'Image':['Sprite','fake peach url here'],
-                'Flavortext':"So light it nearly floats. You could lose this one, among all the stars."
+            'peach':{
+                'Name':'Cloudcover Peach',
+                'Size':30,
+                'Mass':15,
+                'Score':25,
             },
-            'cherry':{
-                'Name':'Space Debris Cherry',
-                'Size':5,
-                'Mass':5,
-                'Image':['Sprite','wrong cherry url here'],
-                'Flavortext':"Small and sweet. The pit appears to be, somehow, a piece of a satellite."
-            },
+            'fig':{
+                'Name':'Solemn Heart Fig',
+                'Size':20,
+                'Mass':60,
+                'Score':30,
+            }
         }
 
-    def __init__(self, pos, vel, type, customSize = None, customMass = None):
+    def __init__(self, pos, vel, type):
 
         self.type = type
         self.thisFruitInfo = self.typeDict[self.type]
-        size = self.thisFruitInfo['Size'] if customSize == None else customSize
-        mass = self.thisFruitInfo['Mass'] if customMass == None else customMass
+        size = self.thisFruitInfo['Size']
+        mass = self.thisFruitInfo['Mass']
 
         if len(pos) < 3:
             pos += [0]
@@ -1063,16 +1077,20 @@ class Fruit(SmallBody):
         return self.type
 
     def draw(self, app):
-        # ART NEEDED
-        if self.thisFruitInfo['Image'][0] == 'Circle':
-            fillColor = self.thisFruitInfo['Image'][1]
-            drawCircle(*render.getCoords(self.pos), render.getScale(self.size), 
-                       #rotateAngle = render.getAngle(self.pos),
-                       fill = fillColor)
+        sprite = f"assets/fruit/{self.type}.png"
+        rawWidth, rawHeight = getImageSize(sprite)
+        scaleFactor = self.size * 2.2 / rawWidth # PERFECT!
+        
+        drawImage(sprite, 
+                  *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
+                  width = render.getScale(rawWidth * scaleFactor), 
+                  height = render.getScale(rawHeight * scaleFactor), align = 'center')
+        
         if app.debugDraw:
             drawCircle(*render.getCoords(self.pos), render.getScale(self.size), 
                        #rotateAngle = render.getAngle(self.pos),
-                       fill = 'darkCyan')
+                       fill = None,
+                       border = 'gold', borderWidth = render.getScale(1))
 
 player = Player([0, 0, 0], [0, 0, 0], 50, 100)
 
@@ -1124,12 +1142,14 @@ class Planet():
 
 class SpherePlanet(Planet):
     Instances = set()
-    def __init__(self, pos, vel, size, mass, image = None):
+    def __init__(self, pos, vel, size, mass, image = None, imageScaler = 1):
         super().__init__(pos, vel, mass)
         # Calling super_init has the added benefit of appending it to the superclass's instance list
         # So this sphereplanet is ALSO contained in the list of general
         self.size = size
         self.image = image
+
+        self.imageScaler = imageScaler
 
         SpherePlanet.Instances.add(self)
 
@@ -1143,6 +1163,17 @@ class SpherePlanet(Planet):
 
     # Rendering
     def draw(self, app):
+        if self.image != None:
+            if isinstance(self.image, str) and 'assets' in self.image:
+                rawWidth, rawHeight = getImageSize(self.image)
+                scaleFactor = self.size * 2.2 * self.imageScaler / rawWidth
+                realWidth, realHeight = render.getScale(rawWidth * scaleFactor), render.getScale(rawHeight * scaleFactor)
+
+                drawImage(self.image, 
+                    *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
+                    width = realWidth, height = realHeight, align = 'center')
+            else:
+                drawCircle(*render.getCoords(self.pos), render.getScale(self.size), fill = self.image)
         if app.debugDraw:
             drawCircle(*render.getCoords(self.pos), 
                         render.getScale(self.size), 
@@ -1152,13 +1183,14 @@ class SpherePlanet(Planet):
 
 class LinePlanet(Planet):
     Instances = set()
-    def __init__(self, centerPos, vel, mass, mesh, image = None):
+    def __init__(self, centerPos, vel, mass, mesh, image = None, imageScaler = 1):
         super().__init__(centerPos, vel, mass)
         # Wind the mesh counterclockwise
         # All hell will break loose if this mesh isn't wound counterclockwise
         # I swear to god
         self.mesh = mesh
         self.image = image
+        self.imageScaler = imageScaler
         self.setCollisionCheckRadius()
 
         LinePlanet.Instances.add(self)
@@ -1372,7 +1404,23 @@ class LinePlanet(Planet):
 
     # Rendering
     def draw(self, app):
-        # ART NEEDED
+        if self.image != None:
+            if isinstance(self.image, str) and 'assets' in self.image:
+                rawWidth, rawHeight = getImageSize(self.image)
+                scaleFactor = self.getCollisionCheckRadius() * self.imageScaler / rawWidth
+                realWidth, realHeight = render.getScale(rawWidth * scaleFactor), render.getScale(rawHeight * scaleFactor)
+
+                drawImage(self.image, 
+                    *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
+                    width = realWidth, height = realHeight, align = 'center')
+            else:
+                allPoints = []
+                for coord in self.getWorldspaceMesh():
+                    coord = render.getCoords(coord)
+                    allPoints += [coord[0]]
+                    allPoints += [coord[1]]
+                drawPolygon(*allPoints, fill = self.image)
+
         if app.debugDraw:
             for thisLine in self.getLinesFromPoints(self.getWorldspaceMesh()):
                 lineStart = render.getCoords(thisLine[0])
@@ -1438,7 +1486,7 @@ class BlackHole(Planet):
                        fill = None,
                        border = 'gold', borderWidth = render.getScale(2))
 
-# Spawners
+# Bonus Fruit Behaviors
 class FruitSpawner():
     Instances = set()
     def __init__(self, fruitToSpawn:str, relativeBody:Planet, thetaPosition, radialPosition, maxInstances:int, respawnTickThreshold:int, randomVelJitter = 0):
@@ -1494,9 +1542,10 @@ class FruitSpawner():
         if app.debugDraw:
             drawStar(*render.getCoords(self.getSpawnPoint()), render.getScale(15), 5, fill = 'gold')
 
-# Enough has changed that I found it easier to make a new category of launcher specifically here
-# and it's not that difficult to just call set union on normal and player spawner instances elsewhere
 class PlayerFruitSpawner():
+    # Enough has changed that I found it easier to make a new category of launcher specifically here
+    # and it's not that difficult to just call set union on normal and player spawner instances elsewhere
+
     Instances = set()
     def __init__(self):
         self.relativeBody = player
@@ -1527,17 +1576,101 @@ class PlayerFruitSpawner():
             if app.debugPrint:
                 print("We launched one fruit, type", fruitToLaunchType)
 
-    # Essential (though faecitious) functions
-    def step(self):
-        pass
-
     def draw(self, app):
         if app.debugDraw and len(player.fruitInventory) > 0:
             drawStar(*render.getCoords(self.getSpawnPos(20)), render.getScale(5), 5, fill = 'gold')
 
 playerCannon = PlayerFruitSpawner()
 
+class ScoreBucket():
+    Instances = set()
+    def __init__(self, relativeBody, thetaPosition, radialPosition, consumptionRadius):
+        self.relativeBody = relativeBody
+        self.thetaPosition = thetaPosition
+
+        if radialPosition == 'default':
+            self.radialPosition = self.relativeBody.size
+        else:
+            self.radialPosition = radialPosition
+
+        self.size = consumptionRadius
+
+        self.totalCollected = 0
+        self.collectedDict = {
+            'grape': 0,
+            'apple': 0,
+            'raspberry': 0,
+            'blackberry': 0,
+            'peach': 0,
+            'fig': 0
+        }
+        self.score = 0
+
+        self.playerNearby = False
+
+        ScoreBucket.Instances.add(self)
+    
+    def step(self, app):
+        self.checkFruitCollisions(app)
+        if vector.distance(self.getCenterPoint(), player.pos) <= self.size * 5:
+            self.playerNearby = True
+        else:
+            self.playerNearby = False
+
+    def getCenterPoint(self):
+        return list(motion.getPosAboutCenter(self.relativeBody.pos, self.radialPosition, 
+                                             self.thetaPosition + self.relativeBody.pos[2]))
+    
+    def checkFruitCollisions(self, app):
+        for spawner in FruitSpawner.Instances | PlayerFruitSpawner.Instances:
+            for possibleFruit in spawner.spawnedFruit: 
+                if vector.distance(self.getCenterPoint(), possibleFruit.pos) <= self.size + possibleFruit.size:
+                    # Pass both fruit and spawner to clearign function, as there's no global fruit location
+                    Player.appendFruitCullList(app, spawner, possibleFruit)
+
+                    # Tick one up
+                    self.totalCollected += 1
+                    self.collectedDict[possibleFruit.getType()] += 1
+                    self.score += Fruit.typeDict[possibleFruit.getType()]['Score']
+                    if app.debugPrint:
+                        print("Score inventory is now:", self.collectedDict)
+                        print("Total score:", self.score)
+    
+    def getScoreDict(self):
+        return self.collectedDict
+    def getTotalCounts(self):
+        return self.totalCollected
+    def getTotalScore(self):
+        return self.score
+
+    def draw(self, app):
+        if self.playerNearby:
+            self.drawScoreboard(app)
+        if app.debugDraw:
+            drawStar(*render.getCoords(self.getCenterPoint()), render.getScale(30), 5, fill = 'orchid')
+            drawCircle(*render.getCoords(self.getCenterPoint()), render.getScale(self.size), fill = None,
+                       border = 'orchid', borderWidth = render.getScale(2))
+            
+    def drawScoreboard(self, app):
+        scoreDict = lazulaBucket.getScoreDict()
+        score = lazulaBucket.getTotalScore()
+        count = lazulaBucket.getTotalCounts
+
+        x = app.width * 0.8
+        y = app.height * 0.5
+
+        drawLabel(f'Score:{score}', x, y - 100, size = 30, fill = 'gold')
+        #print("We have the score dictionary", scoreDict)
         
+        for i in range(len(scoreDict)):
+            listTypes = ['grape', 'apple', 'raspberry', 'blackberry', 'peach', 'fig']
+            height = y - 60 + 40 * i
+            size = 20
+            fruitType = listTypes[i]
+            fruitCount = scoreDict[fruitType]
+
+            text = f'{fruitType} count: {fruitCount}'
+            drawLabel(text, x, height, size = size, fill = 'lavender')
                
 # === CLASSES: MOVEMENT CONTROLLERS ===
 
@@ -1664,24 +1797,28 @@ somberHeartMesh = [
         (0, -400), (-300, -250), (-400, 0), (-300, 250), (0, 400) # interior
     ]
 
-SomberHeart = LinePlanet([0, 0], [0, 0], 0, somberHeartMesh)
+SomberHeart = LinePlanet([0, 0], [0, 0], 0, somberHeartMesh, gradient("fireBrick", 'navy'))
 
 SomberOutlet = NonCollisionPlanet([0, 0], [0, 0], 20, 0) # I want to try negative mass so badly
 SomberCore = BlackHole([0, 0], [0, 0], 150, 11000, 200, SomberOutlet)
 
+# Could I have iterated these ones? Certainly. Did I? Not on this timeframe. 
 RubyCore = NonCollisionPlanet([0, 0], [0, 0], 15, 0)
 
-RubyBrambleOne = SpherePlanet([0, 0], [0, 0], 150, 500)
-RubyBrambleTwo = SpherePlanet([0, 0], [0, 0], 150, 500)
-RubyBrambleThree = SpherePlanet([0, 0], [0, 0], 150, 500)
+RubyBrambleOne = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Ruby Bramble.png')
+RubyBrambleTwo = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Ruby Bramble.png')
+RubyBrambleThree = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Ruby Bramble.png')
 
 SapphireCore = NonCollisionPlanet([0, 0], [0, 0], 15, 0)
 
-SapphireBrambleOne = SpherePlanet([0, 0], [0, 0], 150, 500)
-SapphireBrambleTwo = SpherePlanet([0, 0], [0, 0], 150, 500)
-SapphireBrambleThree = SpherePlanet([0, 0], [0, 0], 150, 500)
+SapphireBrambleOne = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Sapphire Bramble.png')
+SapphireBrambleTwo = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Sapphire Bramble.png')
+SapphireBrambleThree = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Sapphire Bramble.png')
 
-LazulaVine = SpherePlanet([0, 0], [0, 0], 500, 1250)
+LazulaVine = SpherePlanet([0, 0], [0, 0], 500, 1250, gradient('orchid', 'darkSlateBlue'))
+
+MysteriousMan = SpherePlanet([0, 0], [0, 0], 1000, 1500)
+MysteriousMoon = SpherePlanet([0, 0], [0, 0], 150, 1500)
 
 player.setPos([10000, 500, 0]) # Positioned by hand on top of Lazula Vine
 
@@ -1702,6 +1839,8 @@ for planet in Planet.Instances:
 somberSpin = RotatingPath(SomberHeart)
 somberSpin.defineRotation(5, 0)
 
+somberGrove = FruitSpawner('fig', SomberHeart, 180, 650, 3, 250, 2)
+
 # Variables for bramble
 brambleCoreRadius = 2000
 brambleCoreSpeed = 10
@@ -1720,11 +1859,13 @@ rubyThreeOrbit = OrbitPath(RubyBrambleThree)
 rubyThreeOrbit.defineOrbit(RubyCore, brambleBallRadius, brambleBallSpeed, 240)
 
 rubyOneSpin = RotatingPath(RubyBrambleOne)
-rubyOneSpin.defineRotation(brambleBallSpeed)
+rubyOneSpin.defineRotation(brambleBallSpeed, 0)
 rubyTwoSpin = RotatingPath(RubyBrambleTwo)
-rubyTwoSpin.defineRotation(brambleBallSpeed)
+rubyTwoSpin.defineRotation(brambleBallSpeed, 120)
 rubyThreeSpin = RotatingPath(RubyBrambleThree)
-rubyThreeSpin.defineRotation(brambleBallSpeed)
+rubyThreeSpin.defineRotation(brambleBallSpeed, 240)
+
+rubyGrove = FruitSpawner('raspberry', RubyCore, 0, 0, 3, 75, 0.1)
 
 # Sapphire Bramble
 sapphireCoreOrbit = OrbitPath(SapphireCore)
@@ -1738,11 +1879,13 @@ sapphireThreeOrbit = OrbitPath(SapphireBrambleThree)
 sapphireThreeOrbit.defineOrbit(SapphireCore, brambleBallRadius, brambleBallSpeed, 300)
 
 sapphireOneSpin = RotatingPath(SapphireBrambleOne)
-sapphireOneSpin.defineRotation(brambleBallSpeed)
+sapphireOneSpin.defineRotation(brambleBallSpeed, 0)
 sapphireTwoSpin = RotatingPath(SapphireBrambleTwo)
-sapphireTwoSpin.defineRotation(brambleBallSpeed)
+sapphireTwoSpin.defineRotation(brambleBallSpeed, 120)
 sapphireThreeSpin = RotatingPath(SapphireBrambleThree)
-sapphireThreeSpin.defineRotation(brambleBallSpeed)
+sapphireThreeSpin.defineRotation(brambleBallSpeed, 240)
+
+sapphireGrove = FruitSpawner('blackberry', SapphireCore, 0, 0, 3, 75, 0.1)
 
 # Lazula Vine
 lazulaOrbit = OrbitPath(LazulaVine)
@@ -1752,11 +1895,20 @@ lazulaSpin = RotatingPath(LazulaVine)
 lazulaSpin.defineRotation(5, 0)
 
 # Native fruit patch to Lazula
-lazulaGroveOne = FruitSpawner('debug', LazulaVine, 0, 'default', 3, 50, 0.1)
+lazulaGroveOne = FruitSpawner('grape', LazulaVine, 0, 'default', 3, 50, 0.8)
+
+# The one and only consumer bucket
+lazulaBucket = ScoreBucket(LazulaVine, -90, LazulaVine.size, 100)
 
 # Lazula's weirdest moon, Somber Outlet
 outletOrbit = OrbitPath(SomberOutlet)
 outletOrbit.defineOrbit(LazulaVine, 750, -1)
+
+# The empty ones
+mysManOrbit = OrbitPath(MysteriousMan)
+mysManOrbit.defineOrbit((0, 0), 15000, 0.025, 320)
+mysMoonOrbit = OrbitPath(MysteriousMoon)
+mysMoonOrbit.defineOrbit(MysteriousMan, 1000, 0.1, 120)
 
 # === CLASSES: RENDERING ===
 
@@ -1899,8 +2051,11 @@ def takeStep(app):
     for planet in Planet.Instances:
         planet.step()
 
-    for spawner in FruitSpawner.Instances | PlayerFruitSpawner.Instances:
+    for spawner in FruitSpawner.Instances:
         spawner.step()
+    
+    for bucket in ScoreBucket.Instances:
+        bucket.step(app)
 
     # Fruit nonsense
     Player.emptyFruitCullList(app)
@@ -1920,9 +2075,12 @@ def onKeyPress(app, key):
     
     if key == 'p': # Toggle game and paused with p
         if app.gameStatus == 'game':
+
+            
             screenHandler.setPause(app)
         elif app.gameStatus == 'paused':
             screenHandler.setGame(app)
+
 
 def onKeyHold(app, key):
     if app.gameStatus == 'game':
@@ -1950,6 +2108,9 @@ def redrawAll(app):
     # Debug objects
     for thisSpawner in FruitSpawner.Instances | PlayerFruitSpawner.Instances:
         thisSpawner.draw(app)
+
+    for thisBucket in ScoreBucket.Instances:
+        thisBucket.draw(app)
 
     # Screen
     screenHandler.draw(app)
@@ -1981,7 +2142,7 @@ def onAppStart(app):
 
     app.stepsPerSecond = 30
     app.bigG = 20
-    app.debugPrint = True
+    app.debugPrint = False
     app.debugDraw = True
 
 # === MAIN ===
