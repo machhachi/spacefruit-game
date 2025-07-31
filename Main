@@ -36,6 +36,9 @@
 
 # FadingScreentext objects and the Velocity indicator in Player both operate on some PID-inspired opacity changing, if that piques your interest.
 
+# I've done an interesting dive into instancing objects within sets and then culling them!
+#   The text classes served as a practice run for this,
+#   And I'm broadening for the fruit handling.
 
 # <=> Desires <=>
 
@@ -54,13 +57,12 @@
 # ACHEIVED TRANSPARENT SPRITES
 # ACHIEVED VELOCITY INDICATOR
 # ACHIEVED START + PAUSE MENUS
+# ACHIEVED FRUIT SPAWNING
+# ACHIEVED FRUIT PICKUP WITH INSTANCE CULLING
+# ACHIEVED STABLE INTERVAL FRUIT SPAWNING
 
-
-# Preloading images so that they don't lag-spike when first drawn (player flames particularly)
-# Fruit spawning, pickup, inventory
-# Text particles?
-
-
+# Player ejecting fruit from inventory
+# Score area that consumes and counts the scores of fruit
 
 # Fields of investigation
 
@@ -68,23 +70,6 @@
 # Drawing a lineplanet on top of a planet. I think we're ready.
 #   Actually, we've been ready with static planets, but now, we can do it with rotation.
 #   Make sure the sphere and line planets share a center, then, the rotation method should do the trick.
-
-
-# Physics engine level developments
-
-# Entirely new mechanisms
-#   Gravity hand!!!!!
-#       A probe spawned at mouse coordinates backtranslated to realspace (oh god we gotta run that calculation in reverse????)
-#           That'll be a hell of a black box function
-#           And it'll also be relevant, in the scale calculations, to define a furthest distance from the player the thing can be at
-#       Probe, when mouse is being held, exerts a strong gravity on, i guess, all non-player smallbodies
-
-
-
-# HUD elemtents needed:
-#   Boost meter
-#   Strongest gravity influence
-#   Velocity
 
 
 # === IMPORTS ===
@@ -440,9 +425,10 @@ class SmallBody():
             dxPlanet, dyPlanet = thisPlanet.pos[0] - self.pos[0], thisPlanet.pos[1] - self.pos[1]
             # Crunch newtonian gravity: gmM / r^2
             fGThisPlanet = ( app.bigG * self.mass * thisPlanet.mass ) / (dxPlanet ** 2 + dyPlanet ** 2)
-
-            gravityInfo = (dxPlanet, dyPlanet, fGThisPlanet)
-            player.gravitationalPulls.add(gravityInfo)
+            
+            if isinstance(self, Player):
+                gravityInfo = (dxPlanet, dyPlanet, fGThisPlanet)
+                player.gravitationalPulls.add(gravityInfo)
     
             xHat, yHat = vector.unit((dxPlanet, dyPlanet))
             fGx += fGThisPlanet * xHat
@@ -682,7 +668,7 @@ class Player(SmallBody):
         }
 
         self.defineSpecialtyTrackingVariables()
-        self.initializeBackground()
+        self.initializeFruitBusiness()
   
     # Key inputs
     def thrustKeysPressed(self, key):
@@ -706,8 +692,10 @@ class Player(SmallBody):
         player.thrust = [0, 0]
 
     def generalKeysPressed(self, app, key):
-       if key == 'r':
-           self.returnToLazula()
+        if key == 'r':
+            self.returnToLazula()
+        elif key == 'f':
+            playerCannon.launchOneFruit(app) # I love that I have a method named this
     
     def generalKeysHeld(self, app, keyList):
         render.scaleChangeDirection = int('up' in keyList) - int('down' in keyList)
@@ -760,21 +748,14 @@ class Player(SmallBody):
             if abs(self.vel[2]) < self.constants['minimumRotationalSpeed']:
                 self.vel[2] = 0
 
-    # Emergency home teleport
-    def returnToLazula(self):
-        print(LazulaVine.pos[2])
-        desiredPos = motion.getPosAboutCenter(LazulaVine.pos, LazulaVine.size + self.size, LazulaVine.pos[2] + 90)
-        self.pos = [desiredPos[0], desiredPos[1], -LazulaVine.pos[2]]
-        self.vel = LazulaVine.vel.copy()
-
     # Stepping
     def step(self, app):
         self.stepBoost()
         self.collide()
+        self.checkFruitCollisions(app)
         self.takePhysicsStep(app)
 
         self.stepSpecialtyTrackingVariables()
-        self.stepBackground()
     
     # Rendering
     def getFlamesThatShouldBeDrawn(self):
@@ -822,6 +803,51 @@ class Player(SmallBody):
         # Other bonuses
         self.drawSpecialty()
     
+    # === # === # === # === #
+    # PLAYER WORLD INTERFACE METHODS
+    # === # === # === # === #
+
+    # Emergency home teleport
+    def returnToLazula(self):
+        desiredPos = motion.getPosAboutCenter(LazulaVine.pos, LazulaVine.size + self.size, LazulaVine.pos[2] + 90)
+        self.pos = [desiredPos[0], desiredPos[1], -LazulaVine.pos[2]]
+        self.vel = LazulaVine.vel.copy()
+
+    # Fruit collection
+    def initializeFruitBusiness(self):
+        self.fruitInventory = []
+
+    # Fruit culling
+    @staticmethod
+    def startFruitCullList(app):
+        app.fruitsToCull = set()
+    
+    @staticmethod
+    def appendFruitCullList(app, spawnerInstance, fruitInstance):
+        fruitData = (spawnerInstance, fruitInstance)
+        app.fruitsToCull.add(fruitData)
+    
+    @staticmethod
+    def emptyFruitCullList(app):
+        for fruitToDieData in app.fruitsToCull:
+            fruitToDieData[0].spawnedFruit.remove(fruitToDieData[1]) # Storage from the spawner
+            SmallBody.Instances.remove(fruitToDieData[1]) # Got a smallbody instance as a result of superclassing
+            if app.debugPrint:
+                print("Culled one fruit from all physical lists")
+        app.fruitsToCull.clear()
+
+    def checkFruitCollisions(self, app):
+        for spawner in FruitSpawner.Instances | PlayerFruitSpawner.Instances: # Fruit stored in sets belonging to the spawners
+            for possibleFruit in spawner.spawnedFruit: 
+                if vector.distance(player.pos, possibleFruit.pos) <= player.size + possibleFruit.size:
+                    # Pass both fruit and spawner to clearign function, as there's no global fruit location
+                    Player.appendFruitCullList(app, spawner, possibleFruit)
+
+                    self.fruitInventory.append(possibleFruit.getType())
+                    if app.debugPrint:
+                        print("Player inventory is now:", self.fruitInventory)
+        
+        
     # === # === # === # === #
     # PLAYER VISUAL INTERFACE METHODS
     # === # === # === # === #
@@ -960,26 +986,7 @@ class Player(SmallBody):
 
     def setPos(self, pos): # Helpful method so that background is moved with the player properly
         self.pos = pos
-        self.initializeBackground()
-
-    def initializeBackground(self):
-        self.bgPos = self.getBackgroundPosition()
-        self.bgVel = self.getBackgroundVelocity()
-
-    def getBackgroundPosition(self):
-        return [self.pos[0], self.pos[1], 0]
-
-    def getBackgroundVelocity(self):
-        bgParallax = 0.9
-        return vector.scale(self.vel, bgParallax)
     
-    def getBackgroundSize(self, size):
-        return size / render.scale
-    
-    def stepBackground(self):
-        self.bgVel = self.getBackgroundVelocity()
-        motion.plusEq(self.bgPos, self.bgVel, True)
-
     def drawBackground(self, app):
         parallax = 0.25
         imagePath = 'assets/visuals/Background.jpeg'
@@ -991,19 +998,13 @@ class Player(SmallBody):
         drawImage(imagePath, app.width / 2, app.height / 2, align = 'center',
                   width = imageWidth * customScale, height = imageHeight * customScale,
                   rotateAngle = -player.pos[2] )
-        #drawCircle(*render.getCoords(self.bgPos), 
-        #           self.getBackgroundSize(2000),
-        #           #render.getScale(self.getBackgroundSize(200)),
-        #           #5,
-        #           rotateAngle = render.getAngle(self.bgPos),
-        #           fill = gradient('indigo', 'black'))
 
 class Fruit(SmallBody):
-    Instances = set()
-    def __init__(self, pos, vel, type, customSize = None, customMass = None):
-        super().__init__(pos, vel)
-        
-        typeDict = {
+    # Interestingly, (I've decided that) fruit HAS no global instance set
+    # Fruit is a class whose instances I want more control over deleting and creating
+    # So they will all remain disparately bound up in the sets of their respective permanent spawners
+
+    typeDict = {
             'debug':{
                 'Name':'Debug Fruit',
                 'Size':20,
@@ -1041,19 +1042,34 @@ class Fruit(SmallBody):
             },
         }
 
+    def __init__(self, pos, vel, type, customSize = None, customMass = None):
+
         self.type = type
-        thisFruitInfo = typeDict[self.type]
-        self.name = thisFruitInfo['Name']
-        self.size = thisFruitInfo['Size'] if customSize == None else customSize
-        self.mass = thisFruitInfo['Mass'] if customMass == None else customMass
+        self.thisFruitInfo = self.typeDict[self.type]
+        size = self.thisFruitInfo['Size'] if customSize == None else customSize
+        mass = self.thisFruitInfo['Mass'] if customMass == None else customMass
+
+        if len(pos) < 3:
+            pos += [0]
+        
+        super().__init__(pos, vel, size, mass)    
+
+        self.name = self.thisFruitInfo['Name']
+    
+    def getName(self):
+        return self.name
+
+    def getType(self):
+        return self.type
 
     def draw(self, app):
+        # ART NEEDED
         if self.thisFruitInfo['Image'][0] == 'Circle':
             fillColor = self.thisFruitInfo['Image'][1]
             drawCircle(*render.getCoords(self.pos), render.getScale(self.size), 
                        #rotateAngle = render.getAngle(self.pos),
                        fill = fillColor)
-        else:
+        if app.debugDraw:
             drawCircle(*render.getCoords(self.pos), render.getScale(self.size), 
                        #rotateAngle = render.getAngle(self.pos),
                        fill = 'darkCyan')
@@ -1127,11 +1143,12 @@ class SpherePlanet(Planet):
 
     # Rendering
     def draw(self, app):
-        drawCircle(*render.getCoords(self.pos), 
-                    render.getScale(self.size), 
-                    rotateAngle = render.getAngle(self.pos),
-                    fill = None,
-                    border = 'red', borderWidth = render.getScale(2))
+        if app.debugDraw:
+            drawCircle(*render.getCoords(self.pos), 
+                        render.getScale(self.size), 
+                        #rotateAngle = render.getAngle(self.pos),
+                        fill = None,
+                        border = 'red', borderWidth = render.getScale(2))
 
 class LinePlanet(Planet):
     Instances = set()
@@ -1355,10 +1372,12 @@ class LinePlanet(Planet):
 
     # Rendering
     def draw(self, app):
-        for thisLine in self.getLinesFromPoints(self.getWorldspaceMesh()):
-            lineStart = render.getCoords(thisLine[0])
-            lineEnd = render.getCoords(thisLine[1])
-            drawLine(*lineStart, *lineEnd, fill = 'red', lineWidth = render.getScale(2))
+        # ART NEEDED
+        if app.debugDraw:
+            for thisLine in self.getLinesFromPoints(self.getWorldspaceMesh()):
+                lineStart = render.getCoords(thisLine[0])
+                lineEnd = render.getCoords(thisLine[1])
+                drawLine(*lineStart, *lineEnd, fill = 'red', lineWidth = render.getScale(2))
 
 class NonCollisionPlanet(Planet):
     Instances = set()
@@ -1370,7 +1389,12 @@ class NonCollisionPlanet(Planet):
         NonCollisionPlanet.Instances.add(self)
     
     def draw(self, app):
-        pass
+        if app.debugDraw:
+            drawCircle(*render.getCoords(self.pos), 
+                        render.getScale(self.size), 
+                        fill = None,
+                        border = 'red', borderWidth = render.getScale(2),
+                        dashes = True)
 
 class BlackHole(Planet):
     Instances = set()
@@ -1396,16 +1420,125 @@ class BlackHole(Planet):
             other.vel = list(vector.add2to3(other.vel, vector.scale(other.vel, -0.5))) # Just to dampen the blow
 
     def draw(self, app):
+        # ART NEEDED
         drawCircle(*render.getCoords(self.pos), 
-                    render.getScale(self.size), 
-                    rotateAngle = render.getAngle(self.pos),
-                    fill = 'black',
-                    border = 'gold', borderWidth = render.getScale(2))
+                        render.getScale(self.size), 
+                        #rotateAngle = render.getAngle(self.pos),
+                        fill = 'black')
+        
+        if app.debugDraw:
+            drawCircle(*render.getCoords(self.pos), 
+                        render.getScale(self.size), 
+                        rotateAngle = render.getAngle(self.pos),
+                        fill = 'black',
+                        border = 'indigo', borderWidth = render.getScale(2))
+            drawCircle(*render.getCoords(self.pos),
+                       render.getScale(self.teleportThresholdSize),
+                       rotateAngle = render.getAngle(self.pos),
+                       fill = None,
+                       border = 'gold', borderWidth = render.getScale(2))
 
 # Spawners
 class FruitSpawner():
-    pass
+    Instances = set()
+    def __init__(self, fruitToSpawn:str, relativeBody:Planet, thetaPosition, radialPosition, maxInstances:int, respawnTickThreshold:int, randomVelJitter = 0):
+        self.myFruit = fruitToSpawn
+        self.relativeBody = relativeBody
+        self.thetaPosition = thetaPosition
 
+        if radialPosition == 'default':
+            self.radialPosition = self.relativeBody.size + Fruit.typeDict[self.myFruit]['Size'] * 2
+        else:
+            self.radialPosition = radialPosition
+
+        self.spawnedFruit = set()
+        self.maxInstances = maxInstances
+
+        self.respawnTick = 0
+        self.respawnTickThresold = respawnTickThreshold
+
+        self.jitterThresh = randomVelJitter
+
+        FruitSpawner.Instances.add(self)
+    
+    def getSpawnPoint(self):
+        if self.radialPosition == 0:
+            return self.relativeBody.pos
+        else:
+            return list(motion.getPosAboutCenter(self.relativeBody.pos, self.radialPosition, 
+                                                 self.thetaPosition + self.relativeBody.pos[2]))
+        
+    def getSpawnVel(self):
+        if self.jitterThresh != 0:
+            randomTheta = randrange(0, 360)
+            randomMagnitude = random() * self.jitterThresh # from 0x to 1x the specified threshold
+            randomJitterVector = vector.rotate((randomMagnitude, 0), randomTheta)
+        
+            return list(vector.add(self.relativeBody.vel, randomJitterVector)) + [0]
+        else:
+            return list(self.relativeBody.vel)
+    
+    def spawnOneFruit(self):
+        self.spawnedFruit.add( Fruit(self.getSpawnPoint(), self.getSpawnVel(), self.myFruit) )  
+
+    def step(self):
+        self.respawnTick += 1
+        if self.respawnTick >= self.respawnTickThresold:
+            # Attempts to spawn a new fruit after every specified tick duration
+            if len(self.spawnedFruit) < self.maxInstances:
+                self.spawnOneFruit()
+            # Always reset the clock anyway
+            self.respawnTick = 0
+
+    def draw(self, app):
+        if app.debugDraw:
+            drawStar(*render.getCoords(self.getSpawnPoint()), render.getScale(15), 5, fill = 'gold')
+
+# Enough has changed that I found it easier to make a new category of launcher specifically here
+# and it's not that difficult to just call set union on normal and player spawner instances elsewhere
+class PlayerFruitSpawner():
+    Instances = set()
+    def __init__(self):
+        self.relativeBody = player
+        self.relativeTheta = 90
+
+        self.spawnedFruit = set()
+
+        PlayerFruitSpawner.Instances.add(self)
+
+    # Spawn preparation
+    def getSpawnPos(self, fruitRadius):
+        return list(motion.getPosAboutCenter(player.pos, player.size + fruitRadius * 2, 
+                                                 self.relativeTheta - player.pos[2]))
+
+    def getSpawnVel(self):
+        forwardThrowFactor = 2
+        forwardVector = vector.rotate((0, 1), player.pos[2]) # (0, 1) represents forward, perfect for our case
+        return list(vector.add(player.vel, vector.scale(forwardVector, forwardThrowFactor))) + [0]
+    
+    # Instantiate a new fruit out of ourselves
+    def launchOneFruit(self, app):
+        if len(player.fruitInventory) > 0: # Still at least one in the tank
+            fruitToLaunchType = player.fruitInventory.pop() # Removes it from the inventory inherently
+            fruitToLaunchSize = Fruit.typeDict[fruitToLaunchType]['Size']
+            launchPos = self.getSpawnPos(fruitToLaunchSize)
+            launchVel = self.getSpawnVel()
+            self.spawnedFruit.add(Fruit(launchPos, launchVel, fruitToLaunchType))
+            if app.debugPrint:
+                print("We launched one fruit, type", fruitToLaunchType)
+
+    # Essential (though faecitious) functions
+    def step(self):
+        pass
+
+    def draw(self, app):
+        if app.debugDraw and len(player.fruitInventory) > 0:
+            drawStar(*render.getCoords(self.getSpawnPos(20)), render.getScale(5), 5, fill = 'gold')
+
+playerCannon = PlayerFruitSpawner()
+
+        
+               
 # === CLASSES: MOVEMENT CONTROLLERS ===
 
 class Path():
@@ -1534,7 +1667,7 @@ somberHeartMesh = [
 SomberHeart = LinePlanet([0, 0], [0, 0], 0, somberHeartMesh)
 
 SomberOutlet = NonCollisionPlanet([0, 0], [0, 0], 20, 0) # I want to try negative mass so badly
-SomberCore = BlackHole([0, 0], [0, 0], 150, 12000, 150, SomberOutlet)
+SomberCore = BlackHole([0, 0], [0, 0], 150, 11000, 200, SomberOutlet)
 
 RubyCore = NonCollisionPlanet([0, 0], [0, 0], 15, 0)
 
@@ -1618,9 +1751,12 @@ lazulaOrbit.defineOrbit((0, 0), 10000, 0.01, 0)
 lazulaSpin = RotatingPath(LazulaVine)
 lazulaSpin.defineRotation(5, 0)
 
+# Native fruit patch to Lazula
+lazulaGroveOne = FruitSpawner('debug', LazulaVine, 0, 'default', 3, 50, 0.1)
+
 # Lazula's weirdest moon, Somber Outlet
 outletOrbit = OrbitPath(SomberOutlet)
-outletOrbit.defineOrbit(LazulaVine, 500, -1)
+outletOrbit.defineOrbit(LazulaVine, 750, -1)
 
 # === CLASSES: RENDERING ===
 
@@ -1714,6 +1850,15 @@ class Render():
     #def save
 
 class UnRender():
+    # Unrender serves a fascinating vestigial purpose
+    # On two occasions I envisioned I'd incorporate the mouse position as a world-based coordinate
+    # For either an object that floated where the mouse was, or to fire an object in its direction
+    # And though there are roundabout solutions to answering that question, here is the most immediate:
+    # How elegantly could I 100% reverse-engineer my rendering code, such that any inputted screen position
+    # knows its exact coordinate in the world?
+
+    # There wasn't quite enough time before term project deadline, but nonetheless,
+    # this seems an interesting monument.
     def getWorldCoords(self, screenCoordinate):
 
         def unScreenshift(xScreen, yScreen):
@@ -1729,7 +1874,7 @@ class UnRender():
             return xMoved + player.pos[0], yMoved + player.pos[1]
         
         xScreen, yScreen = screenCoordinate[0], screenCoordinate[1]
-        return unTranslate(unRotate(unScale(unScreenshift(xScreen, yScreen))))
+        return unTranslate(unRotate(unScale(unScreenshift(xScreen, yScreen)))) # The majesty
 
 render = Render(app)
 
@@ -1753,6 +1898,12 @@ def takeStep(app):
     
     for planet in Planet.Instances:
         planet.step()
+
+    for spawner in FruitSpawner.Instances | PlayerFruitSpawner.Instances:
+        spawner.step()
+
+    # Fruit nonsense
+    Player.emptyFruitCullList(app)
 
     # Rendering
     render.step(app)
@@ -1783,16 +1934,12 @@ def onKeyRelease(app, key):
         player.thrustKeysReleased()
         player.generalKeysReleased(app, key)
 
-# MOUSE CONTROL
-
-def onMouseMove(app, mouseX, mouseY):
-    pass
-
 # DRAWING
 
 def redrawAll(app): 
     render.setRenderOrigin(app)
 
+    # Specifically putting background in back
     player.drawBackground(app)
 
     # Game objects
@@ -1800,13 +1947,12 @@ def redrawAll(app):
         for instance in objectClass.Instances:
             instance.draw(app)
 
-    # Player specific cool visuals
+    # Debug objects
+    for thisSpawner in FruitSpawner.Instances | PlayerFruitSpawner.Instances:
+        thisSpawner.draw(app)
 
+    # Screen
     screenHandler.draw(app)
-
-
-    if not app.debugPrint: # Threshold beyond which all is debug material
-        return
 
 # === APP INITIALIZATION ===
 
@@ -1820,23 +1966,28 @@ def debugGamut(app):
             print(instance)
         print()
     print(barrierString)
-    app.isTheGravityOn = False
 
 def onAppStart(app):
     debugGamut(app)
 
     RotatingPath.initalize()
     OrbitPath.initalize()
+
+    # Game setup
+    Player.startFruitCullList(app)
+
     # Game state
     screenHandler.setStart(app)
 
     app.stepsPerSecond = 30
     app.bigG = 20
-    app.debugPrint = False
+    app.debugPrint = True
+    app.debugDraw = True
 
 # === MAIN ===
 
 def main():
+    #runApp(width = 800, height = 800)
     runApp(width = 1600, height = 1200)
 
 main()
