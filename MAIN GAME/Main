@@ -781,7 +781,7 @@ class Player(SmallBody):
         return result
 
     def draw(self, app):
-        mainSprite = "assets/player/player_base.png"
+        mainSprite = "MAIN GAME/assets/player/player_base.png"
 
         rawWidth, rawHeight = getImageSize(mainSprite) # ought to be 500 x 500
         playerScaleFactor = self.size * 0.0042 # PERFECT NUMBER
@@ -791,7 +791,7 @@ class Player(SmallBody):
         if player.thrust != [0, 0]: # Cull for processing speed
             for direction in self.getFlamesThatShouldBeDrawn(): # One string for each thruster
                 thisSprite = self.thrustSpriteIndex // self.ticksPerSprite + 1
-                flameSprite = f"assets/player/player_flame_{direction}_{thisSprite}.png"
+                flameSprite = f"MAIN GAME/assets/player/player_flame_{direction}_{thisSprite}.png"
                 drawImage(flameSprite,
                         *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
                         width = realWidth * 2, height = realHeight * 2, align = 'center')
@@ -805,7 +805,7 @@ class Player(SmallBody):
         # Drawing two types of landing legs
         
         landingCondition = 'open' if self.landing else 'closed'
-        landingSprite = f"assets/player/player_landing_{landingCondition}.png"
+        landingSprite = f"MAIN GAME/assets/player/player_landing_{landingCondition}.png"
 
         drawImage(landingSprite, 
                   *render.getCoords(self.pos), rotateAngle = render.getAngle(self.pos), 
@@ -1002,7 +1002,8 @@ class Player(SmallBody):
     
     def drawBackground(self, app):
         parallax = 0.25
-        imagePath = 'assets/visuals/Background.jpeg'
+        
+        imagePath = 'MAIN GAME/assets/visuals/Background.jpeg'
         imageWidth, imageHeight = getImageSize(imagePath)
 
         # Last multiplication is to make it not be smaller than the max screen
@@ -1077,7 +1078,7 @@ class Fruit(SmallBody):
         return self.type
 
     def draw(self, app):
-        sprite = f"assets/fruit/{self.type}.png"
+        sprite = f"MAIN GAME/assets/fruit/{self.type}.png"
         rawWidth, rawHeight = getImageSize(sprite)
         scaleFactor = self.size * 2.2 / rawWidth # PERFECT!
         
@@ -1284,7 +1285,7 @@ class LinePlanet(Planet):
         # === # === # === # === #
         
         # Welcome to hell. This single function, and its connections upstairs in collideWithLines, made for easily ten straight hours of development on Monday, July 28th, 2025.
-        # But in all fairness, this is sick as fuck.
+        # But in all fairness, this is sick as [redacted].
         # Circle collisions, of ANY radius, with an arbitrary polygon? Gorgeous.
 
         # === # === # === # === #
@@ -1805,15 +1806,15 @@ SomberCore = BlackHole([0, 0], [0, 0], 150, 11000, 200, SomberOutlet)
 # Could I have iterated these ones? Certainly. Did I? Not on this timeframe. 
 RubyCore = NonCollisionPlanet([0, 0], [0, 0], 15, 0)
 
-RubyBrambleOne = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Ruby Bramble.png')
-RubyBrambleTwo = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Ruby Bramble.png')
-RubyBrambleThree = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Ruby Bramble.png')
+RubyBrambleOne = SpherePlanet([0, 0], [0, 0], 150, 500, 'MAIN GAME/assets/planets/Ruby Bramble.png')
+RubyBrambleTwo = SpherePlanet([0, 0], [0, 0], 150, 500, 'MAIN GAME/assets/planets/Ruby Bramble.png')
+RubyBrambleThree = SpherePlanet([0, 0], [0, 0], 150, 500, 'MAIN GAME/assets/planets/Ruby Bramble.png')
 
 SapphireCore = NonCollisionPlanet([0, 0], [0, 0], 15, 0)
 
-SapphireBrambleOne = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Sapphire Bramble.png')
-SapphireBrambleTwo = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Sapphire Bramble.png')
-SapphireBrambleThree = SpherePlanet([0, 0], [0, 0], 150, 500, 'assets/planets/Sapphire Bramble.png')
+SapphireBrambleOne = SpherePlanet([0, 0], [0, 0], 150, 500, 'MAIN GAME/assets/planets/Sapphire Bramble.png')
+SapphireBrambleTwo = SpherePlanet([0, 0], [0, 0], 150, 500, 'MAIN GAME/assets/planets/Sapphire Bramble.png')
+SapphireBrambleThree = SpherePlanet([0, 0], [0, 0], 150, 500, 'MAIN GAME/assets/planets/Sapphire Bramble.png')
 
 LazulaVine = SpherePlanet([0, 0], [0, 0], 500, 1250, gradient('orchid', 'darkSlateBlue'))
 
