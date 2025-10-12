@@ -1,0 +1,11 @@
+Hello! Welcome to the Supplemental Material.
+
+NOTE: all python programs in this folder require the CMU Graphics library, and thus will not run without the cmu_graphics folder present in the same folder they are stored in (in this case, the Programs + Documentation folder). I have elected to not store an additional copy of cmu_graphics here for space purposes.
+
+In Programs + Documentation, you will find:
+
+- [line planet generator tool.py] A utility program I wrote to visualize the meshes I was creating for 'line planets', my internal term for polygonal planets the player could bump into. (as opposed to circular 'sphere planets'). This simple utility takes a series of points, wraps them into a counterclockwise-wound polygon, and renders it to the screen using the same worldspace->screenspace translation math my final game would use. In fact, on line 38, one can change which list of points is passed to the function in order to change which meshes would be drawn.
+
+- [Project Yap] A text document from when I was taking notes on how to implement collisions. Perhaps interesting as a snapshot of the development process.
+
+- [testbed Physics.py] A utility for testing my internal screenspace-worldspace code. In earlier versions this program was a tester for the thrust-based system the current game uses, but in its current state it moves via discrete steps.
